@@ -8,7 +8,7 @@
 
 ## Сайт проекта
 
-GitHub Pages: https://egzy164rus.github.io/Tycoon/
+GitHub Pages: https://egzy164rus.github.io/tycoon/
 
 ## Планы
 
