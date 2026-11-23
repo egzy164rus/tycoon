@@ -1,7 +1,7 @@
 /*
- * MiniTycoon Engine — маленькое событийное ядро для нашей игры.
- * Никаких библиотек и тяжёлого игрового цикла: перерисовываем интерфейс
- * только после действий игрока, а сохранение храним в localStorage.
+ * MiniTycoon Engine — маленькое событийное ядро для игры.
+ * Перерисовываем интерфейс только после действий игрока,
+ * а сохранение храним в localStorage.
  */
 (() => {
   class MiniTycoonEngine {
@@ -15,32 +15,14 @@
       this.state = this.load();
       this.onClick = this.onClick.bind(this);
       this.onChange = this.onChange.bind(this);
-      this.onInput = this.onInput.bind(this);
-      this.onKeydown = this.onKeydown.bind(this);
       this.onFullscreenChange = this.onFullscreenChange.bind(this);
     }
 
     load() {
       try {
         const saved = JSON.parse(localStorage.getItem(this.storageKey) || "null");
-        if (saved && saved.version === 1 && saved.state && typeof saved.state === "object") {
-          const next = { ...this.initialState(), ...saved.state };
-          // Open the new customer-facing storefront once for saves from the older UI,
-          // while keeping all business progress intact.
-          if ((saved.state.storefrontVersion || 0) < 1) {
-            next.activeView = "store";
-            next.storefrontVersion = 1;
-          }
-          next.storeQuery = typeof next.storeQuery === "string" ? next.storeQuery : "";
-          next.storeCategory = ["all", "electronics", "clothes", "home"].includes(next.storeCategory) ? next.storeCategory : "all";
-          next.storeSort = ["popular", "priceAsc", "priceDesc"].includes(next.storeSort) ? next.storeSort : "popular";
-          next.cartItems = Array.isArray(next.cartItems)
-            ? next.cartItems.filter(item => item && typeof item.id === "string" && Number.isFinite(Number(item.qty)) && Number(item.qty) > 0).map(item => ({ id: item.id, qty: Math.floor(Number(item.qty)) }))
-            : [];
-          next.favorites = Array.isArray(next.favorites) ? next.favorites.filter(item => typeof item === "string") : [];
-          next.pendingOrders = Number.isFinite(next.pendingOrders) ? Math.max(0, Math.floor(next.pendingOrders)) : 0;
-          next.cartOpen = Boolean(next.cartOpen);
-          return next;
+        if (saved && saved.state && typeof saved.state === "object") {
+          return { ...this.initialState(), ...saved.state };
         }
       } catch (error) {
         console.warn("Не удалось прочитать сохранение игры:", error);
@@ -59,18 +41,12 @@
     start() {
       this.root.addEventListener("click", this.onClick);
       this.root.addEventListener("change", this.onChange);
-      this.root.addEventListener("input", this.onInput);
-      document.addEventListener("keydown", this.onKeydown);
       document.addEventListener("fullscreenchange", this.onFullscreenChange);
       this.draw();
     }
 
     onFullscreenChange() {
       this.draw();
-    }
-
-    onKeydown(event) {
-      if (event.key === "Escape" && this.state.cartOpen) this.dispatch("CART_CLOSE");
     }
 
     onClick(event) {
@@ -87,7 +63,7 @@
         } catch (error) {
           console.warn("Не удалось открыть игру в новой вкладке:", error);
         }
-        if (!opened) this.dispatch("SHOW_NOTICE", { text: "Браузер заблокировал новую вкладку. Разрешите всплывающие окна для предпросмотра или откройте игру через кнопку ↗ в панели предпросмотра." });
+        if (!opened) this.dispatch("SHOW_NOTICE", { text: "Браузер заблокировал новую вкладку. Разрешите всплывающие окна или откройте игру через кнопку ↗ в панели предпросмотра." });
         return;
       }
 
@@ -117,33 +93,6 @@
       this.dispatch(control.dataset.action, payload);
     }
 
-    onInput(event) {
-      const control = event.target.closest('[data-action="STORE_SEARCH"]');
-      if (!control || !this.root.contains(control)) return;
-      this.state = { ...this.state, storeQuery: control.value };
-      this.save();
-      this.applyStoreFilters();
-    }
-
-    applyStoreFilters() {
-      const category = this.state.storeCategory || "all";
-      const query = String(this.state.storeQuery || "").trim().toLowerCase();
-      let visible = 0;
-      for (const card of this.root.querySelectorAll(".store-product-card")) {
-        const matchesCategory = category === "all" || card.dataset.category === category;
-        const matchesQuery = !query || (card.dataset.search || "").includes(query);
-        card.hidden = !(matchesCategory && matchesQuery);
-        if (!card.hidden) visible += 1;
-      }
-      const count = this.root.querySelector("[data-store-results]");
-      if (count) {
-        const ending = visible % 10 === 1 && visible % 100 !== 11 ? "товар" : visible % 10 >= 2 && visible % 10 <= 4 && !(visible % 100 >= 12 && visible % 100 <= 14) ? "товара" : "товаров";
-        count.textContent = `${visible} ${ending}`;
-      }
-      const empty = this.root.querySelector(".store-empty");
-      if (empty) empty.hidden = visible > 0;
-    }
-
     dispatch(action, payload = {}) {
       const next = this.reducer(this.state, action, payload);
       if (!next || next === this.state) return;
@@ -154,12 +103,11 @@
 
     draw() {
       this.root.innerHTML = this.renderView(this.state);
-      this.applyStoreFilters();
       if (this.state.notice) {
         window.clearTimeout(this.noticeTimer);
         this.noticeTimer = window.setTimeout(() => {
           if (this.state.notice) this.dispatch("CLEAR_NOTICE");
-        }, 4200);
+        }, 5200);
       }
     }
   }

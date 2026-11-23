@@ -1,4 +1,4 @@
-const CACHE_NAME = "svoi-market-pwa-v1";
+const CACHE_NAME = "svoi-market-pwa-v2";
 const APP_FILES = [
   "",
   "index.html",
@@ -7,9 +7,6 @@ const APP_FILES = [
   "game.js",
   "main.js",
   "manifest.webmanifest",
-  "assets/headphones.jpg",
-  "assets/sneakers.jpg",
-  "assets/lamp.jpg",
   "assets/icons/icon-192.png",
   "assets/icons/icon-512.png",
   "assets/icons/apple-touch-icon.png",

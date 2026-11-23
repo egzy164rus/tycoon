@@ -1,163 +1,432 @@
 /*
- * Market Tycoon — игровая логика и интерфейс.
- * Это небольшая управленческая игра: все правила живут отдельно от мини-движка.
+ * «Свой Маркет» — глубокий тайкун-симулятор маркетплейса.
+ * Пошаговая игра: каждый ход — неделя. Команда, исследования,
+ * проекты, конкуренты, события с выбором и финансы.
+ * Правила отделены от движка: state → reducer → render.
  */
 (() => {
-  const SELLER_CATALOG = [
-    { id: "home", name: "Дом на полке", category: "Дом и уют", products: 24, baseOrders: 7, icon: "⌂", tint: "mint" },
-    { id: "wear", name: "Вторая кожа", category: "Одежда", products: 18, baseOrders: 6, icon: "◒", tint: "peach" },
-    { id: "pixel", name: "Пиксельная лавка", category: "Электроника", products: 15, baseOrders: 8, icon: "▦", tint: "lavender" },
-    { id: "book", name: "Книжный маяк", category: "Книги", products: 31, baseOrders: 5, icon: "▤", tint: "sky" },
-    { id: "sport", name: "СпортЛиния", category: "Спорт и отдых", products: 19, baseOrders: 7, icon: "↗", tint: "lime" },
-    { id: "garden", name: "Зелёный угол", category: "Сад и дача", products: 27, baseOrders: 6, icon: "✳", tint: "mint" },
-    { id: "coffee", name: "Кофе рядом", category: "Продукты", products: 22, baseOrders: 8, icon: "◉", tint: "peach" },
-    { id: "craft", name: "Мастерская 12", category: "Ручная работа", products: 13, baseOrders: 5, icon: "✦", tint: "lavender" },
-    { id: "pet", name: "Хвост и лапы", category: "Для питомцев", products: 21, baseOrders: 7, icon: "♡", tint: "sky" }
+  // ============================== ДАННЫЕ ==============================
+
+  const VIEWS = [
+    { id: "overview", label: "Кабинет", icon: "⌂" },
+    { id: "team", label: "Команда", icon: "♙" },
+    { id: "research", label: "Исследования", icon: "⌘" },
+    { id: "projects", label: "Проекты", icon: "▤" },
+    { id: "market", label: "Рынок", icon: "↗" }
   ];
 
-  const START_SELLERS = SELLER_CATALOG.slice(0, 3).map(item => ({ ...item }));
-  const VIEWS = [
-    { id: "store", label: "Витрина", icon: "◈" },
-    { id: "overview", label: "Обзор", icon: "⌂" },
-    { id: "sellers", label: "Продавцы", icon: "▧" },
-    { id: "logistics", label: "Логистика", icon: "▣" },
-    { id: "marketing", label: "Маркетинг", icon: "↗" }
+  const STAGES = [
+    { name: "Пилотный город", market: 900, expandCost: 60000 },
+    { name: "Область", market: 3200, expandCost: 220000 },
+    { name: "Вся страна", market: 11000, expandCost: 900000 },
+    { name: "Международный рынок", market: 40000, expandCost: 0 }
+  ];
+
+  const ROLES = [
+    { id: "dev", name: "Разработчик", icon: "⌘", salary: 2800, effect: "Исследовательские очки" },
+    { id: "logi", name: "Логист", icon: "▣", salary: 2400, effect: "Мощность склада и доставки" },
+    { id: "marketer", name: "Маркетолог", icon: "↗", salary: 2600, effect: "Спрос и реклама" },
+    { id: "seller_mgr", name: "Менеджер продавцов", icon: "▧", salary: 2200, effect: "Лояльность продавцов" },
+    { id: "analyst", name: "Аналитик", icon: "◔", salary: 3000, effect: "Очки исследований и доля рынка" }
+  ];
+
+  const TECHS = [
+    // Логистика
+    { id: "sort_center", branch: "logistics", name: "Сортировочный центр", rp: 30, money: 15000, requires: [], desc: "Заказы обрабатываются быстрее и дешевле.", effectText: "−15% расходов на логистику" },
+    { id: "express", branch: "logistics", name: "Экспресс-доставка", rp: 45, money: 28000, requires: ["sort_center"], desc: "Доставка за день повышает доверие покупателей.", effectText: "+8% спроса, репутация растёт быстрее" },
+    { id: "own_fleet", branch: "logistics", name: "Свой автопарк", rp: 65, money: 48000, requires: ["express"], desc: "Курьеры под вашим контролем.", effectText: "+25% мощности доставки, −10% расходов" },
+    { id: "robots", branch: "logistics", name: "Роботизация склада", rp: 95, money: 90000, requires: ["own_fleet"], desc: "Роботы собирают заказы круглосуточно.", effectText: "−25% расходов на логистику, +20% мощности склада" },
+    // Продукт
+    { id: "mobile_app", branch: "product", name: "Мобильное приложение", rp: 35, money: 20000, requires: [], desc: "Покупателям удобнее заказывать со смартфона.", effectText: "+12% спроса" },
+    { id: "reviews", branch: "product", name: "Система отзывов", rp: 30, money: 14000, requires: [], desc: "Честные отзывы повышают доверие.", effectText: "Репутация растёт быстрее" },
+    { id: "ai_recs", branch: "product", name: "ИИ-рекомендации", rp: 60, money: 42000, requires: ["mobile_app"], desc: "Персональные подборки увеличивают чек.", effectText: "+10% к среднему чеку" },
+    { id: "plus_sub", branch: "product", name: "Платформа подписки", rp: 80, money: 60000, requires: ["ai_recs"], desc: "Технология для регулярного дохода с подписчиков.", effectText: "Открывает проект «Подписка Плюс»" },
+    // Маркетинг
+    { id: "brand", branch: "marketing", name: "Бренд-платформа", rp: 30, money: 18000, requires: [], desc: "Единый стиль и голос бренда.", effectText: "Реклама эффективнее на 30%" },
+    { id: "partner_program", branch: "marketing", name: "Партнёрская программа", rp: 40, money: 24000, requires: [], desc: "Продавцам выгодно расти вместе с вами.", effectText: "Лояльность продавцов растёт" },
+    { id: "mega_sales", branch: "marketing", name: "Большие распродажи", rp: 55, money: 36000, requires: ["brand"], desc: "Городские события скидок под вашим брендом.", effectText: "+6% спроса" },
+    { id: "exclusives", branch: "marketing", name: "Эксклюзивные бренды", rp: 85, money: 75000, requires: ["partner_program", "mega_sales"], desc: "Товары, которых нет у конкурентов.", effectText: "Доля рынка растёт быстрее" }
+  ];
+
+  const BRANCHES = [
+    { id: "logistics", name: "Логистика", icon: "▣", tone: "mint" },
+    { id: "product", name: "Продукт", icon: "◈", tone: "lavender" },
+    { id: "marketing", name: "Маркетинг", icon: "↗", tone: "peach" }
+  ];
+
+  const PROJECTS = [
+    { id: "app_launch", name: "Запуск мобильного приложения", weeks: 4, cost: 45000, requires: [], desc: "Собственное приложение для покупателей.", effectText: "+15% спроса, +1% доли рынка", stage: 0 },
+    { id: "new_warehouse", name: "Склад в новом городе", weeks: 3, cost: 38000, requires: [], desc: "Расширяем географию доставки.", effectText: "+40% мощности, +5% спроса", stage: 0 },
+    { id: "ad_blitz", name: "Кампания «Весь город»", weeks: 2, cost: 20000, requires: [], desc: "Масштабная реклама с долгим эффектом.", effectText: "+20% спроса на 4 недели, +1% доли", stage: 0 },
+    { id: "analytics_dept", name: "Отдел аналитики", weeks: 2, cost: 22000, requires: [], desc: "Данные превращаются в решения.", effectText: "+5 очков исследований в неделю", stage: 0 },
+    { id: "logistics_contract", name: "Контракт с логистической сетью", weeks: 2, cost: 28000, requires: [], desc: "Скидки на доставку по всему рынку.", effectText: "−20% расходов на логистику", stage: 0 },
+    { id: "loyalty_club", name: "Клуб лояльности", weeks: 3, cost: 26000, requires: ["reviews"], desc: "Покупатели возвращаются снова и снова.", effectText: "+10% спроса, репутация растёт", stage: 0 },
+    { id: "subscription", name: "Подписка «Маркет Плюс»", weeks: 3, cost: 30000, requires: ["plus_sub"], desc: "Регулярный доход с подписчиков.", effectText: "Еженедельный доход с подписки", stage: 0 },
+    { id: "expansion", name: "Экспансия: новый рынок", weeks: 4, cost: 0, requires: [], desc: "Выход из пилотного города в большой рынок.", effectText: "Открывает следующую стадию игры", stage: 0, isExpansion: true }
+  ];
+
+  const EVENTS = [
+    {
+      id: "payment_failure", icon: "⚠", title: "Сбой платёжной системы",
+      text: "Часть заказов прошла с ошибкой оплаты. Покупатели недовольны и ждут решения.",
+      choices: [
+        { label: "Возместить издержки покупателям", hint: "−8 000 ₽ · +4 репутации", effects: { cash: -8000, reputation: 4 } },
+        { label: "Переждать и молчать", hint: "−6 репутации", effects: { reputation: -6 } }
+      ]
+    },
+    {
+      id: "blogger", icon: "✦", title: "Блогер-миллионник на связи",
+      text: "Популярный блогер предлагает интеграцию с вашей площадкой. Его аудитория — ваш целевой сегмент.",
+      choices: [
+        { label: "Оплатить интеграцию", hint: "−12 000 ₽ · +25% спроса на 2 недели", effects: { cash: -12000, demandWeeks: 2, demandMult: 0.25 } },
+        { label: "Вежливо отказать", hint: "Без изменений", effects: {} }
+      ]
+    },
+    {
+      id: "couriers_strike", icon: "⚠", title: "Курьеры грозят забастовкой",
+      text: "Доставщики недовольны оплатой в пиковый сезон. Нужно решить быстро.",
+      choices: [
+        { label: "Поднять оплату курьерам", hint: "−14 000 ₽ · +2 морали команде", effects: { cash: -14000, morale: 2 } },
+        { label: "Договориться на словах", hint: "−4 репутации · −3 лояльности", effects: { reputation: -4, loyalty: -3 } }
+      ]
+    },
+    {
+      id: "exclusive_brand", icon: "◈", title: "Крупный бренд просит эксклюзив",
+      text: "Известный бренд готовен продавать только у вас. Нужен депозит и гарантии.",
+      choices: [
+        { label: "Подписать эксклюзив", hint: "−20 000 ₽ · +1,5% доли рынка", effects: { cash: -20000, share: 1.5 } },
+        { label: "Работать со всеми брендами", hint: "+2 лояльности продавцов", effects: { loyalty: 2 } }
+      ]
+    },
+    {
+      id: "price_war", icon: "⚔", title: "Конкуренты начинают войну скидок",
+      text: "«МаркетПро» и «БыстроМаркет» одновременно запустили гигантские распродажи.",
+      choices: [
+        { label: "Участвовать в войне скидок", hint: "−15 000 ₽ · +1% доли рынка", effects: { cash: -15000, share: 1 } },
+        { label: "Сохранить маржу", hint: "−0,8% доли рынка", effects: { share: -0.8 } }
+      ]
+    },
+    {
+      id: "viral_review", icon: "♡", title: "Вирусный отзыв о площадке",
+      text: "Покупатель написал трогательную историю о вашей доставке. Пост собирает тысячи лайков.",
+      choices: [
+        { label: "Поддержать историю рекламой", hint: "−4 000 ₽ · +6 репутации", effects: { cash: -4000, reputation: 6 } },
+        { label: "Просто поблагодарить", hint: "+2 репутации", effects: { reputation: 2 } }
+      ]
+    },
+    {
+      id: "supplier_delay", icon: "⚠", title: "Поставщик задерживает товары",
+      text: "Ключевой поставщик срывает сроки. Витрины могут опустеть.",
+      choices: [
+        { label: "Срочная закупка у других", hint: "−9 000 ₽", effects: { cash: -9000 } },
+        { label: "Пусть покупатели подождут", hint: "−5 репутации · −10% спроса на неделю", effects: { reputation: -5, demandWeeks: 1, demandMult: -0.1 } }
+      ]
+    },
+    {
+      id: "hack_attack", icon: "⚠", title: "Попытка хакерской атаки",
+      text: "Служба безопасности обнаружила подозрительную активность в системе.",
+      choices: [
+        { label: "Усилить защиту немедленно", hint: "−11 000 ₽ · +2 репутации", effects: { cash: -11000, reputation: 2 } },
+        { label: "Обойтись своими силами", hint: "−8 репутации · −0,5% доли", effects: { reputation: -8, share: -0.5 } }
+      ]
+    },
+    {
+      id: "city_festival", icon: "♫", title: "Городской фестиваль",
+      text: "Мэрия приглашает площадку стать партнёром праздника. Много людей и камер.",
+      choices: [
+        { label: "Стать спонсором", hint: "−10 000 ₽ · +5 репутации · +15% спроса на неделю", effects: { cash: -10000, reputation: 5, demandWeeks: 1, demandMult: 0.15 } },
+        { label: "Поставить бесплатный стенд", hint: "−3 000 ₽ · +2 репутации", effects: { cash: -3000, reputation: 2 } }
+      ]
+    },
+    {
+      id: "young_brands", icon: "✦", title: "Молодые бренды просят поддержки",
+      text: "Локальные мастера хотят продавать на вашей площадке, но боятся условий.",
+      choices: [
+        { label: "Запустить акселератор брендов", hint: "−14 000 ₽ · +5 лояльности · +1% доли", effects: { cash: -14000, loyalty: 5, share: 1 } },
+        { label: "Предложить стандартные условия", hint: "+2 лояльности", effects: { loyalty: 2 } }
+      ]
+    },
+    {
+      id: "delivery_complaints", icon: "⚠", title: "Волна жалоб на доставку",
+      text: "Покупатели жалуются на опоздания. Соцсети полны скриншотов.",
+      choices: [
+        { label: "Нанять подработку на склад", hint: "−7 000 ₽", effects: { cash: -7000 } },
+        { label: "Оптимизировать маршруты", hint: "−3 000 ₽ · −2 репутации", effects: { cash: -3000, reputation: -2 } }
+      ]
+    },
+    {
+      id: "competitor_closed", icon: "↗", title: "Конкурент закрылся",
+      text: "Небольшая площадка «Торговец» прекращает работу. Её продавцы ищут новый дом.",
+      choices: [
+        { label: "Переманить продавцов", hint: "−9 000 ₽ · +5 лояльности · +1% доли", effects: { cash: -9000, loyalty: 5, share: 1 } },
+        { label: "Не спешить", hint: "+0,4% доли рынка", effects: { share: 0.4 } }
+      ]
+    },
+    {
+      id: "investors", icon: "₽", title: "Инвесторы довольны отчётом",
+      text: "Совет директоров выделил премию на развитие. Куда направить средства?",
+      choices: [
+        { label: "В продукт и технологии", hint: "+25 очков исследований", effects: { rp: 25 } },
+        { label: "В маркетинг", hint: "+1% доли рынка", effects: { share: 1 } },
+        { label: "В команду", hint: "+10 морали всем", effects: { morale: 10 } }
+      ]
+    },
+    {
+      id: "holiday_season", icon: "♫", title: "Праздничный сезон близко",
+      text: "Аналитики прогнозируют рекордный спрос. Склады нужно готовить заранее.",
+      choices: [
+        { label: "Мобилизовать все силы", hint: "−6 000 ₽ · +30% спроса на неделю", effects: { cash: -6000, demandWeeks: 1, demandMult: 0.3 } },
+        { label: "Работать как обычно", hint: "+10% спроса на неделю", effects: { demandWeeks: 1, demandMult: 0.1 } }
+      ]
+    },
+    {
+      id: "star_seller", icon: "★", title: "Звёздный продавец хочет к вам",
+      text: "Популярный бренд с огромной аудиторией выбирает между вами и конкурентом.",
+      choices: [
+        { label: "Уговорить и помочь с запуском", hint: "−5 000 ₽ · +10% спроса", effects: { cash: -5000, demandWeeks: 2, demandMult: 0.1 } },
+        { label: "Предложить стандартные условия", hint: "Без изменений", effects: {} }
+      ]
+    },
+    {
+      id: "press_article", icon: "▤", title: "Статья «Какой маркетплейс выбрать?»",
+      text: "Крупное издание готовит обзор рынка. Можно подготовиться к упоминанию.",
+      choices: [
+        { label: "PR-подготовка к публикации", hint: "−6 000 ₽ · +5 репутации", effects: { cash: -6000, reputation: 5 } },
+        { label: "Положиться на качество", hint: "Шанс: +3 или −3 репутации", effects: { randomRep: 3 } }
+      ]
+    }
   ];
 
   const GOALS = [
-    { id: "partners", title: "Расширить витрину", description: "Подключить четвёртого продавца", type: "sellers", target: 4, reward: 1800, icon: "▧" },
-    { id: "orders", title: "Первые покупатели", description: "Доставить 50 заказов", type: "orders", target: 50, reward: 2200, icon: "↗" },
-    { id: "profit", title: "День в плюсе", description: "Заработать 3 000 ₽ за один день", type: "profit", target: 3000, reward: 2000, icon: "₽" }
+    { id: "first_profit", title: "Первая прибыль", description: "Закрыть неделю в плюсе", type: "profit", target: 1, reward: 5000, icon: "₽" },
+    { id: "rp50", title: "Наука", description: "Накопить 50 очков исследований", type: "rp", target: 50, reward: 6000, icon: "⌘" },
+    { id: "team5", title: "Команда мечты", description: "Нанять 5 сотрудников", type: "team", target: 5, reward: 9000, icon: "♙" },
+    { id: "first_project", title: "Первый запуск", description: "Завершить любой проект", type: "projects", target: 1, reward: 8000, icon: "▤" },
+    { id: "share10", title: "Серьёзный игрок", description: "Достичь 10% доли рынка", type: "share", target: 10, reward: 15000, icon: "↗" },
+    { id: "rep80", title: "Любимая площадка", description: "Поднять репутацию до 80", type: "reputation", target: 80, reward: 12000, icon: "♡" },
+    { id: "tech3", title: "Технологии", description: "Изучить 3 технологии", type: "techs", target: 3, reward: 10000, icon: "◈" },
+    { id: "cash100k", title: "Капитал", description: "Накопить 100 000 ₽", type: "cash", target: 100000, reward: 12000, icon: "₽" },
+    { id: "stage2", title: "За пределами города", description: "Выйти на рынок области", type: "stage", target: 1, reward: 20000, icon: "✧" },
+    { id: "week20", title: "Двадцать недель", description: "Довести компанию до 20-й недели", type: "week", target: 20, reward: 15000, icon: "◷" }
   ];
 
-  const STORE_PRODUCTS = [
-    { id: "headphones", name: "Наушники Cloud Lite", category: "Электроника", categoryId: "electronics", seller: "Пиксельная лавка", price: 3990, oldPrice: 5990, rating: "4,9", reviews: 284, delivery: "Завтра", badge: "ХИТ НЕДЕЛИ", image: "headphones.jpg", features: "Шумоподавление · до 30 ч", keywords: "звук беспроводные музыка подарок" },
-    { id: "sneakers", name: "Кроссовки City Walk", category: "Одежда и обувь", categoryId: "clothes", seller: "Вторая кожа", price: 5290, oldPrice: 6990, rating: "4,8", reviews: 146, delivery: "Завтра", badge: "ПОПУЛЯРНОЕ", image: "sneakers.jpg", features: "Лёгкие · на каждый день", keywords: "обувь кеды спорт прогулка" },
-    { id: "lamp", name: "Настольная лампа Forma", category: "Дом и уют", categoryId: "home", seller: "Дом на полке", price: 1890, oldPrice: 2990, rating: "4,9", reviews: 91, delivery: "Сегодня", badge: "ВЫБОР ПОКУПАТЕЛЕЙ", image: "lamp.jpg", features: "Тёплый свет · 3 режима", keywords: "свет рабочий стол интерьер подарок" }
-  ];
+  const FIRST_NAMES = ["Антон", "Марина", "Илья", "Ксения", "Дмитрий", "Ольга", "Роман", "Алина", "Павел", "Юлия", "Никита", "Ева", "Артём", "Полина", "Максим", "Дарья", "Сергей", "Вера"];
+  const COMPETITOR_NAMES = ["МаркетПро", "БыстроМаркет", "Торговый Дом"];
+
+  // ============================== УТИЛИТЫ ==============================
 
   const money = value => `${new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 }).format(Math.round(value))} ₽`;
-  const number = value => new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 }).format(value);
+  const number = value => new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 }).format(Math.round(value));
   const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
-  const esc = value => String(value).replace(/[&<>"']/g, character => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]);
+  const esc = value => String(value).replace(/[&<>\"']/g, character => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]);
+  const pick = array => array[Math.floor(Math.random() * array.length)];
+
+  const roleById = id => ROLES.find(role => role.id === id) || ROLES[0];
+  const techById = id => TECHS.find(tech => tech.id === id);
+  const projectById = id => PROJECTS.find(project => project.id === id);
+  const eventById = id => EVENTS.find(event => event.id === id);
+
+  // ============================== СОСТОЯНИЕ ==============================
+
+  function makeMember(name, roleId, skill) {
+    const role = roleById(roleId);
+    return { id: `m${Math.random().toString(36).slice(2, 9)}`, name, role: roleId, skill, morale: 72, salary: role.salary + skill * 350 };
+  }
+
+  function makeCandidate() {
+    return makeMember(pick(FIRST_NAMES), pick(ROLES).id, 1 + Math.floor(Math.random() * 3));
+  }
 
   function initialState() {
     return {
-      day: 1,
-      cash: 12500,
-      reputation: 70,
-      sellerLoyalty: 88,
+      week: 1,
+      stage: 0,
+      cash: 30000,
+      reputation: 65,
+      sellerLoyalty: 80,
       commission: 12,
-      sellers: START_SELLERS.map(item => ({ ...item })),
+      share: 4,
+      competitors: COMPETITOR_NAMES.map((name, index) => ({ id: `comp${index}`, name, weight: [0.45, 0.33, 0.22][index] })),
+      team: [
+        makeMember("Ольга", "seller_mgr", 2),
+        makeMember("Антон", "logi", 2),
+        makeMember("Ксения", "marketer", 1)
+      ],
+      candidates: [makeCandidate(), makeCandidate(), makeCandidate()],
+      officeLevel: 1,
+      researchPoints: 0,
+      completedTechs: [],
+      activeProjects: [],
+      completedProjects: [],
+      marketingWeeksLeft: 0,
       warehouseLevel: 1,
       couriers: 2,
-      adDays: 0,
-      totalOrders: 0,
-      pendingOrders: 0,
-      bestProfit: 0,
-      completedGoals: [],
+      tempDemand: { weeks: 0, mult: 0 },
+      goalsDone: [],
+      event: null,
       history: [],
       lastReport: null,
-      activeView: "store",
-      storeQuery: "",
-      storeCategory: "all",
-      storeSort: "popular",
-      cartItems: [],
-      favorites: [],
-      cartOpen: false,
-      notice: ""
+      log: [{ week: 1, text: "Компания «Лавка Плюс» вышла на рынок пилотного города.", tone: "good" }],
+      notice: "",
+      activeView: "overview"
     };
+  }
+
+  // ============================== РАСЧЁТЫ ==============================
+
+  function hasTech(state, id) {
+    return state.completedTechs.includes(id);
+  }
+
+  function hasProject(state, id) {
+    return state.completedProjects.includes(id);
+  }
+
+  function teamCap(state) {
+    return 3 + state.officeLevel * 2;
+  }
+
+  function projectSlots(state) {
+    return 1 + Math.floor(state.officeLevel / 2);
+  }
+
+  function teamSkill(state, roleId) {
+    return state.team.filter(member => member.role === roleId).reduce((sum, member) => sum + member.skill, 0);
+  }
+
+  function moraleFactor(state) {
+    const avg = state.team.length ? state.team.reduce((sum, member) => sum + member.morale, 0) / state.team.length : 70;
+    return 0.65 + avg / 285;
   }
 
   function warehouseCapacity(state) {
-    return 52 + (state.warehouseLevel - 1) * 30;
+    let capacity = 70 + (state.warehouseLevel - 1) * 45;
+    if (hasTech(state, "robots")) capacity *= 1.2;
+    if (hasProject(state, "new_warehouse")) capacity *= 1.4;
+    return Math.round(capacity);
   }
 
   function courierCapacity(state) {
-    return state.couriers * 18;
+    let capacity = state.couriers * 22;
+    if (hasTech(state, "own_fleet")) capacity *= 1.25;
+    return Math.round(capacity);
   }
 
   function dailyCapacity(state) {
-    return Math.min(warehouseCapacity(state), courierCapacity(state));
+    const base = Math.min(warehouseCapacity(state), courierCapacity(state));
+    return Math.round((base + 10) * (1 + teamSkill(state, "logi") * 0.02));
   }
 
-  function baseOrders(state) {
-    return state.sellers.reduce((sum, seller) => sum + seller.baseOrders, 0);
+  function demandMultiplier(state) {
+    let mult = 1;
+    if (hasTech(state, "express")) mult += 0.08;
+    if (hasTech(state, "mobile_app")) mult += 0.12;
+    if (hasTech(state, "mega_sales")) mult += 0.06;
+    if (hasProject(state, "app_launch")) mult += 0.15;
+    if (hasProject(state, "new_warehouse")) mult += 0.05;
+    if (hasProject(state, "loyalty_club")) mult += 0.1;
+    if (state.marketingWeeksLeft > 0) mult += hasTech(state, "brand") ? 0.39 : 0.3;
+    if (state.tempDemand.weeks > 0) mult += state.tempDemand.mult;
+    return mult;
   }
 
-  function forecastOrders(state) {
-    const reputationFactor = 0.82 + state.reputation / 300;
-    const loyaltyFactor = 0.72 + state.sellerLoyalty / 320;
-    let forecast = Math.round(baseOrders(state) * reputationFactor * loyaltyFactor);
-    if (state.adDays > 0) forecast = Math.ceil(forecast * 1.32);
-    return Math.max(1, forecast + (state.pendingOrders || 0));
+  function opsMultiplier(state) {
+    let mult = 1;
+    if (hasTech(state, "sort_center")) mult *= 0.85;
+    if (hasTech(state, "own_fleet")) mult *= 0.9;
+    if (hasTech(state, "robots")) mult *= 0.75;
+    if (hasProject(state, "logistics_contract")) mult *= 0.8;
+    mult *= Math.max(0.7, 1 - teamSkill(state, "logi") * 0.015);
+    return mult;
   }
 
-  function sellerCost(state) {
-    return 1800 + Math.max(0, state.sellers.length - 3) * 350;
+  function avgOrder(state) {
+    return Math.round(3000 * (hasTech(state, "ai_recs") ? 1.1 : 1));
   }
 
-  function warehouseCost(state) {
-    return 3800 + (state.warehouseLevel - 1) * 2200;
+  function weeklySalaries(state) {
+    return state.team.reduce((sum, member) => sum + member.salary, 0);
   }
 
-  function courierCost(state) {
-    return 1600 + Math.max(0, state.couriers - 2) * 400;
+  function researchPerWeek(state) {
+    const raw = teamSkill(state, "dev") * 2.5 + teamSkill(state, "analyst") * 2 + (hasProject(state, "analytics_dept") ? 5 : 0);
+    return Math.max(1, Math.round(raw * moraleFactor(state)));
   }
 
-  function storeProduct(id) {
-    return STORE_PRODUCTS.find(product => product.id === id);
+  function forecastDemand(state) {
+    const stage = STAGES[state.stage];
+    const shareDrift = 0;
+    return Math.max(1, Math.round(stage.market * (state.share + shareDrift) / 100 * demandMultiplier(state)));
   }
 
-  function cartCount(state) {
-    return (state.cartItems || []).reduce((sum, item) => sum + item.qty, 0);
+  function marketShares(state) {
+    const yourShare = clamp(state.share, 0, 90);
+    const rest = 100 - yourShare;
+    const totalWeight = state.competitors.reduce((sum, competitor) => sum + competitor.weight, 0) || 1;
+    return [
+      { name: "Вы", share: yourShare, you: true },
+      ...state.competitors.map(competitor => ({ name: competitor.name, share: rest * competitor.weight / totalWeight }))
+    ];
   }
 
-  function cartTotal(state) {
-    return (state.cartItems || []).reduce((sum, item) => {
-      const product = storeProduct(item.id);
-      return sum + (product ? product.price * item.qty : 0);
-    }, 0);
-  }
-
-  function productImageSource(filename) {
-    const embedded = typeof window !== "undefined" && window.MarketAssets && window.MarketAssets[filename];
-    return embedded || `assets/${filename}`;
-  }
-
-  function commissionMessage(value) {
-    if (value <= 10) return "Низкая комиссия: продавцам выгодно расти вместе с вами.";
-    if (value <= 15) return "Сбалансированная ставка для платформы и продавцов.";
-    return "Высокая комиссия: прибыль больше, но лояльность продавцов будет снижаться.";
-  }
+  // ============================== ЦЕЛИ ==============================
 
   function goalProgress(state, goal) {
-    if (goal.type === "sellers") return state.sellers.length;
-    if (goal.type === "orders") return state.totalOrders;
-    if (goal.type === "profit") return state.bestProfit;
-    return 0;
-  }
-
-  function goalProgressLabel(state, goal) {
-    const value = Math.min(goalProgress(state, goal), goal.target);
-    if (goal.type === "sellers") return `${value} / ${goal.target} продавца`;
-    if (goal.type === "orders") return `${number(value)} / ${number(goal.target)} заказов`;
-    return `${money(value)} / ${money(goal.target)}`;
+    switch (goal.type) {
+      case "profit": return state.lastReport && state.lastReport.profit > 0 ? 1 : 0;
+      case "rp": return Math.floor(state.researchPoints);
+      case "team": return state.team.length;
+      case "projects": return state.completedProjects.length;
+      case "share": return Math.floor(state.share);
+      case "reputation": return Math.floor(state.reputation);
+      case "techs": return state.completedTechs.length;
+      case "cash": return Math.floor(state.cash);
+      case "stage": return state.stage;
+      case "week": return state.week;
+      default: return 0;
+    }
   }
 
   function awardGoals(state) {
-    const completed = Array.isArray(state.completedGoals) ? [...state.completedGoals] : [];
-    const newlyCompleted = GOALS.filter(goal => !completed.includes(goal.id) && goalProgress(state, goal) >= goal.target);
-    if (!newlyCompleted.length) return state;
-    const reward = newlyCompleted.reduce((sum, goal) => sum + goal.reward, 0);
-    const names = newlyCompleted.map(goal => `«${goal.title}»`).join(", ");
-    return {
+    const done = new Set(state.goalsDone);
+    const fresh = GOALS.filter(goal => !done.has(goal.id) && goalProgress(state, goal) >= goal.target);
+    if (!fresh.length) return state;
+    const reward = fresh.reduce((sum, goal) => sum + goal.reward, 0);
+    const names = fresh.map(goal => `«${goal.title}»`).join(", ");
+    return pushLog({
       ...state,
       cash: state.cash + reward,
-      completedGoals: [...completed, ...newlyCompleted.map(goal => goal.id)],
-      notice: `${state.notice ? `${state.notice} ` : ""}Цель выполнена: ${names}. Награда — ${money(reward)}!`
-    };
+      goalsDone: [...state.goalsDone, ...fresh.map(goal => goal.id)],
+      notice: `Цель выполнена: ${names}. Награда — ${money(reward)}!`
+    }, `Выполнены цели: ${names}. Награда ${money(reward)}.`, "good");
   }
+
+  function pushLog(state, text, tone = "info") {
+    return { ...state, log: [{ week: state.week, text, tone }, ...(state.log || [])].slice(0, 12) };
+  }
+
+  // ============================== СОБЫТИЯ ==============================
+
+  function applyEffects(state, effects) {
+    const next = { ...state };
+    if (effects.cash) next.cash = state.cash + effects.cash;
+    if (effects.reputation) next.reputation = clamp(state.reputation + effects.reputation, 0, 100);
+    if (effects.loyalty) next.sellerLoyalty = clamp(state.sellerLoyalty + effects.loyalty, 0, 100);
+    if (effects.share) next.share = clamp(state.share + effects.share, 0.5, 90);
+    if (effects.rp) next.researchPoints = Math.max(0, state.researchPoints + effects.rp);
+    if (effects.morale) next.team = state.team.map(member => ({ ...member, morale: clamp(member.morale + effects.morale, 0, 100) }));
+    if (effects.demandWeeks) {
+      const weeks = Math.max(state.tempDemand.weeks, effects.demandWeeks);
+      next.tempDemand = { weeks, mult: state.tempDemand.mult + effects.demandMult };
+    }
+    if (effects.randomRep) {
+      const roll = Math.random() > 0.5 ? effects.randomRep : -effects.randomRep;
+      next.reputation = clamp(next.reputation + roll, 0, 100);
+    }
+    return next;
+  }
+
+  // ============================== REDUCER ==============================
 
   function reducer(state, action, payload = {}) {
     if (action === "CLEAR_NOTICE") return { ...state, notice: "" };
@@ -168,187 +437,308 @@
       return { ...state, activeView: view, notice: "" };
     }
 
-    if (action === "STORE_CATEGORY") {
-      const category = ["all", "electronics", "clothes", "home"].includes(payload.category) ? payload.category : "all";
-      return { ...state, storeCategory: category, notice: "" };
-    }
-
-    if (action === "STORE_SORT") {
-      const sort = ["popular", "priceAsc", "priceDesc"].includes(payload.value) ? payload.value : "popular";
-      return { ...state, storeSort: sort, notice: "" };
-    }
-
-    if (action === "TOGGLE_FAVORITE") {
-      const id = payload.product;
-      if (!storeProduct(id)) return state;
-      const favorites = Array.isArray(state.favorites) ? state.favorites : [];
-      const next = favorites.includes(id) ? favorites.filter(item => item !== id) : [...favorites, id];
-      return { ...state, favorites: next, notice: favorites.includes(id) ? "Убрали из избранного." : "Сохранили в избранное." };
-    }
-
-    if (action === "CART_ADD") {
-      const product = storeProduct(payload.product);
-      if (!product) return state;
-      const cartItems = Array.isArray(state.cartItems) ? state.cartItems : [];
-      const existing = cartItems.find(item => item.id === product.id);
-      const nextItems = existing
-        ? cartItems.map(item => item.id === product.id ? { ...item, qty: item.qty + 1 } : item)
-        : [...cartItems, { id: product.id, qty: 1 }];
-      return { ...state, cartItems: nextItems, notice: `«${product.name}» добавлен в корзину.` };
-    }
-
-    if (action === "CART_OPEN") return { ...state, cartOpen: true, notice: "" };
-    if (action === "CART_CLOSE") return { ...state, cartOpen: false };
-
-    if (action === "CART_REMOVE") {
-      const id = payload.product;
-      const cartItems = (state.cartItems || []).flatMap(item => item.id !== id ? [item] : item.qty > 1 ? [{ ...item, qty: item.qty - 1 }] : []);
-      return { ...state, cartItems, notice: "Количество товара обновлено." };
-    }
-
-    if (action === "CART_CHECKOUT") {
-      const count = cartCount(state);
-      if (!count) return { ...state, cartOpen: false, notice: "Корзина пока пуста — выберите товар на витрине." };
-      const orderWord = count % 100 >= 11 && count % 100 <= 14 ? "заказов" : count % 10 === 1 ? "заказ" : count % 10 >= 2 && count % 10 <= 4 ? "заказа" : "заказов";
-      return {
-        ...state,
-        cartItems: [],
-        cartOpen: false,
-        pendingOrders: (state.pendingOrders || 0) + count,
-        notice: `Демо-заказ оформлен! Спрос на завтра увеличен на ${count} ${orderWord}.`
-      };
-    }
-
     if (action === "RESET") return initialState();
 
     if (action === "SET_COMMISSION") {
       const value = clamp(Math.round(Number(payload.value) || state.commission), 8, 22);
-      return { ...state, commission: value, notice: `Комиссия теперь ${value}%. ${commissionMessage(value)}` };
+      return { ...state, commission: value, notice: `Комиссия площадки — ${value}%.` };
     }
 
-    if (action === "HIRE_SELLER") {
-      const cost = sellerCost(state);
-      if (state.sellers.length >= SELLER_CATALOG.length) {
-        return { ...state, notice: "Вы уже подключили всех доступных продавцов из пилотного города." };
-      }
-      if (state.cash < cost) return { ...state, notice: `Не хватает средств: подключение продавца стоит ${money(cost)}.` };
-      const available = SELLER_CATALOG.filter(item => !state.sellers.some(seller => seller.id === item.id));
-      const chosen = available[Math.floor(Math.random() * available.length)];
-      return awardGoals({
+    if (action === "EVENT_CHOICE") {
+      const event = state.event ? eventById(state.event.id) : null;
+      if (!event) return state;
+      const choice = event.choices[Number(payload.index) || 0];
+      if (!choice) return state;
+      let next = applyEffects({ ...state, event: null }, choice.effects || {});
+      const moneyHint = choice.effects && choice.effects.cash ? ` (${money(choice.effects.cash)})` : "";
+      next = pushLog(next, `Событие «${event.title}»: ${choice.label}${moneyHint}.`, "event");
+      next.notice = `Решение принято: ${choice.label}.`;
+      return awardGoals(next);
+    }
+
+    if (action === "HIRE") {
+      const candidate = state.candidates.find(item => item.id === payload.id);
+      if (!candidate) return state;
+      if (state.team.length >= teamCap(state)) return { ...state, notice: `Офис заполнен: расширьте офис, чтобы нанять больше людей (сейчас лимит ${teamCap(state)}).` };
+      const signing = candidate.salary * 2;
+      if (state.cash < signing) return { ...state, notice: `Не хватает средств: подписание стоит ${money(signing)}.` };
+      const role = roleById(candidate.role);
+      return pushLog({
+        ...state,
+        cash: state.cash - signing,
+        team: [...state.team, candidate],
+        candidates: state.candidates.map(item => item.id === payload.id ? makeCandidate() : item),
+        notice: `${candidate.name} принят(а) на должность «${role.name}».`
+      }, `Новый сотрудник: ${candidate.name} (${role.name}).`, "good");
+    }
+
+    if (action === "FIRE") {
+      const member = state.team.find(item => item.id === payload.id);
+      if (!member) return state;
+      const severance = member.salary * 2;
+      return pushLog({
+        ...state,
+        cash: state.cash - severance,
+        team: state.team.filter(item => item.id !== payload.id).map(item => ({ ...item, morale: clamp(item.morale - 5, 0, 100) })),
+        notice: `${member.name} уволен(а). Выходное пособие — ${money(severance)}, мораль команды снизилась.`
+      }, `${member.name} покинул(а) команду.`, "bad");
+    }
+
+    if (action === "TRAIN") {
+      const member = state.team.find(item => item.id === payload.id);
+      if (!member) return state;
+      if (member.skill >= 8) return { ...state, notice: `${member.name} уже достиг(ла) высшего уровня мастерства.` };
+      const cost = 6000;
+      if (state.cash < cost) return { ...state, notice: `Не хватает средств: обучение стоит ${money(cost)}.` };
+      return pushLog({
         ...state,
         cash: state.cash - cost,
-        sellers: [...state.sellers, { ...chosen }],
-        notice: `К платформе присоединился продавец «${chosen.name}». Ассортимент вырос на ${chosen.products} товаров.`
-      });
+        team: state.team.map(item => item.id === payload.id ? { ...item, skill: item.skill + 1, morale: clamp(item.morale + 2, 0, 100) } : item),
+        notice: `${member.name} прошёл(ла) обучение: навык повышен.`
+      }, `Обучение: ${member.name} теперь навык ${member.skill + 1}.`, "good");
+    }
+
+    if (action === "PAY_BONUS") {
+      const cost = 4000;
+      if (state.cash < cost) return { ...state, notice: `Не хватает средств: премия стоит ${money(cost)}.` };
+      return pushLog({
+        ...state,
+        cash: state.cash - cost,
+        team: state.team.map(item => ({ ...item, morale: clamp(item.morale + 10, 0, 100) })),
+        notice: "Премия выплачена: мораль команды выросла."
+      }, "Выплачена премия всей команде.", "good");
+    }
+
+    if (action === "TEAMBUILDING") {
+      const cost = 6000;
+      if (state.cash < cost) return { ...state, notice: `Не хватает средств: тимбилдинг стоит ${money(cost)}.` };
+      return pushLog({
+        ...state,
+        cash: state.cash - cost,
+        team: state.team.map(item => ({ ...item, morale: clamp(item.morale + 15, 0, 100) })),
+        sellerLoyalty: clamp(state.sellerLoyalty + 2, 0, 100),
+        notice: "Тимбилдинг прошёл отлично: мораль и лояльность выросли."
+      }, "Командный отдых: мораль +15.", "good");
+    }
+
+    if (action === "UPGRADE_OFFICE") {
+      if (state.officeLevel >= 5) return { ...state, notice: "Офис уже максимального уровня." };
+      const cost = 18000 + state.officeLevel * 12000;
+      if (state.cash < cost) return { ...state, notice: `Не хватает средств: расширение офиса стоит ${money(cost)}.` };
+      return pushLog({
+        ...state,
+        cash: state.cash - cost,
+        officeLevel: state.officeLevel + 1,
+        notice: `Офис расширен до уровня ${state.officeLevel + 1}. Лимит команды: ${3 + (state.officeLevel + 1) * 2}, слотов проектов: ${1 + Math.floor((state.officeLevel + 1) / 2)}.`
+      }, `Офис расширен до уровня ${state.officeLevel + 1}.`, "good");
     }
 
     if (action === "UPGRADE_WAREHOUSE") {
-      const cost = warehouseCost(state);
-      if (state.warehouseLevel >= 6) return { ...state, notice: "Склад уже достиг максимального уровня в пилотном городе." };
+      if (state.warehouseLevel >= 8) return { ...state, notice: "Склад уже максимального уровня." };
+      const cost = 26000 + state.warehouseLevel * 16000;
       if (state.cash < cost) return { ...state, notice: `Не хватает средств: улучшение склада стоит ${money(cost)}.` };
-      const newLevel = state.warehouseLevel + 1;
-      return {
+      return pushLog({
         ...state,
         cash: state.cash - cost,
-        warehouseLevel: newLevel,
-        notice: `Склад улучшен до уровня ${newLevel}. Теперь он обрабатывает больше заказов за день.`
-      };
+        warehouseLevel: state.warehouseLevel + 1,
+        notice: `Склад улучшен до уровня ${state.warehouseLevel + 1}.`
+      }, `Склад уровня ${state.warehouseLevel + 1}.`, "good");
     }
 
     if (action === "HIRE_COURIER") {
-      const cost = courierCost(state);
-      if (state.couriers >= 10) return { ...state, notice: "Для пилотного города уже нанята максимальная команда курьеров." };
+      if (state.couriers >= 14) return { ...state, notice: "Курьерская команда уже максимального размера." };
+      const cost = 9000 + Math.max(0, state.couriers - 2) * 3500;
       if (state.cash < cost) return { ...state, notice: `Не хватает средств: новый курьер стоит ${money(cost)}.` };
-      return {
+      return pushLog({
         ...state,
         cash: state.cash - cost,
         couriers: state.couriers + 1,
-        notice: "Новый курьер вышел на маршрут. Дневная мощность доставки увеличена на 18 заказов."
-      };
+        notice: `Нанят курьер. В команде доставки: ${state.couriers + 1}.`
+      }, `Курьеров в команде: ${state.couriers + 1}.`, "good");
     }
 
-    if (action === "RUN_ADS") {
-      if (state.adDays > 0) return { ...state, notice: `Рекламная кампания уже работает — осталось ${state.adDays} дн.` };
-      const cost = 950;
-      if (state.cash < cost) return { ...state, notice: `Не хватает средств: рекламная кампания стоит ${money(cost)}.` };
-      return {
+    if (action === "START_CAMPAIGN") {
+      if (state.marketingWeeksLeft > 0) return { ...state, notice: `Кампания уже идёт: осталось ${state.marketingWeeksLeft} нед.` };
+      const cost = 12000;
+      if (state.cash < cost) return { ...state, notice: `Не хватает средств: кампания стоит ${money(cost)}.` };
+      return pushLog({
         ...state,
         cash: state.cash - cost,
-        adDays: 3,
-        notice: "Кампания запущена на 3 дня. Прогноз заказов вырос — проверьте мощность доставки."
-      };
+        marketingWeeksLeft: 3,
+        notice: "Маркетинговая кампания запущена на 3 недели."
+      }, "Запущена маркетинговая кампания (3 недели).", "good");
     }
 
-    if (action === "END_DAY") {
-      const today = state.day;
-      let eventName = "Обычный день";
-      let eventMultiplier = 1;
-      const roll = Math.random();
-      if ((today + 1) % 5 === 0) {
-        eventName = "Городской день скидок";
-        eventMultiplier = 1.28;
-      } else if (roll > 0.9) {
-        eventName = "Популярный товар попал в рекомендации";
-        eventMultiplier = 1.2;
-      } else if (roll < 0.08) {
-        eventName = "Тихий день на рынке";
-        eventMultiplier = 0.82;
+    if (action === "BUY_TECH") {
+      const tech = techById(payload.id);
+      if (!tech || state.completedTechs.includes(tech.id)) return state;
+      const missing = tech.requires.filter(id => !state.completedTechs.includes(id));
+      if (missing.length) return { ...state, notice: "Сначала изучите предыдущие технологии." };
+      if (state.researchPoints < tech.rp) return { ...state, notice: `Не хватает очков исследований: нужно ${tech.rp}, есть ${Math.floor(state.researchPoints)}.` };
+      if (state.cash < tech.money) return { ...state, notice: `Не хватает средств: технология стоит ${money(tech.money)}.` };
+      return pushLog({
+        ...state,
+        cash: state.cash - tech.money,
+        researchPoints: state.researchPoints - tech.rp,
+        completedTechs: [...state.completedTechs, tech.id],
+        notice: `Технология «${tech.name}» изучена: ${tech.effectText}.`
+      }, `Изучена технология «${tech.name}».`, "good");
+    }
+
+    if (action === "START_PROJECT") {
+      const project = projectById(payload.id);
+      if (!project || state.completedProjects.includes(project.id)) return state;
+      if (state.activeProjects.some(item => item.id === project.id)) return { ...state, notice: "Этот проект уже идёт." };
+      if (state.activeProjects.length >= projectSlots(state)) return { ...state, notice: `Все слоты проектов заняты (${projectSlots(state)}). Расширьте офис или дождитесь завершения.` };
+      const missing = project.requires.filter(id => !state.completedTechs.includes(id));
+      if (missing.length) return { ...state, notice: "Проект требует изучить технологии: " + missing.map(id => techById(id) ? techById(id).name : id).join(", ") + "." };
+      if (project.isExpansion) {
+        if (state.stage >= STAGES.length - 1) return { ...state, notice: "Вы уже на крупнейшем рынке." };
+        if (state.share < 15) return { ...state, notice: `Для экспансии нужно не менее 15% доли рынка (сейчас ${state.share.toFixed(1)}%).` };
+      }
+      const cost = project.isExpansion ? STAGES[state.stage].expandCost : project.cost;
+      if (state.cash < cost) return { ...state, notice: `Не хватает средств: проект стоит ${money(cost)}.` };
+      return pushLog({
+        ...state,
+        cash: state.cash - cost,
+        activeProjects: [...state.activeProjects, { id: project.id, weeksDone: 0, weeksTotal: project.weeks }],
+        notice: `Проект «${project.name}» запущен: ${project.weeks} нед.`
+      }, `Запущен проект «${project.name}».`, "good");
+    }
+
+    if (action === "END_WEEK") {
+      if (state.event) return { ...state, notice: "Сначала примите решение по событию недели." };
+
+      // --- модификаторы ---
+      const marketTotal = STAGES[state.stage].market;
+      const dMult = demandMultiplier(state);
+      const cap = dailyCapacity(state);
+
+      // --- динамика доли рынка ---
+      const marketerBoost = teamSkill(state, "marketer") * 0.02;
+      const commissionAttract = (15 - state.commission) * 0.02;
+      const repAttract = (state.reputation - 65) * 0.012;
+      let shareDrift = repAttract + commissionAttract + marketerBoost + (hasTech(state, "exclusives") ? 0.22 : 0) + (Math.random() * 0.5 - 0.2);
+      if (state.marketingWeeksLeft > 0) shareDrift += 0.25;
+      const share = clamp(state.share + shareDrift, 0.5, 90);
+
+      // --- спрос и выполнение ---
+      const demand = Math.max(1, Math.round(marketTotal * share / 100 * dMult * (0.92 + Math.random() * 0.16)));
+      const fulfilled = Math.min(demand, cap);
+      const lost = Math.max(0, demand - fulfilled);
+      const fillRate = demand > 0 ? fulfilled / demand : 1;
+
+      // --- финансы ---
+      const commissionRevenue = Math.round(fulfilled * avgOrder(state) * state.commission / 100);
+      const servicesRevenue = Math.round(state.sellerLoyalty * 45 * (1 + state.officeLevel * 0.05));
+      const subscriptionRevenue = hasProject(state, "subscription") ? Math.round(1500 + share * 700 + state.reputation * 20) : 0;
+      const revenue = commissionRevenue + servicesRevenue + subscriptionRevenue;
+
+      const salaries = weeklySalaries(state);
+      const rent = 800 + state.officeLevel * 1200;
+      const ops = Math.round(fulfilled * 42 * opsMultiplier(state));
+      const marketingUpkeep = state.marketingWeeksLeft > 0 ? 2500 : 0;
+      const projectUpkeep = state.activeProjects.length * 1500;
+      const costs = salaries + rent + ops + marketingUpkeep + projectUpkeep;
+      const profit = revenue - costs;
+
+      // --- очки исследований ---
+      const rpGain = researchPerWeek(state);
+
+      // --- дрейф показателей ---
+      let reputation = state.reputation + (fillRate >= 0.98 ? 1 : fillRate >= 0.9 ? 0 : fillRate >= 0.75 ? -1 : -2);
+      if (hasTech(state, "express")) reputation += 0.5;
+      if (hasTech(state, "reviews")) reputation += 0.5;
+      if (hasProject(state, "loyalty_club")) reputation += 0.5;
+      reputation = clamp(reputation, 0, 100);
+
+      let loyalty = state.sellerLoyalty;
+      if (state.commission >= 17) loyalty -= 2;
+      else if (state.commission >= 15) loyalty -= 1;
+      else if (state.commission <= 10) loyalty += 1;
+      if (hasTech(state, "partner_program")) loyalty += 1;
+      loyalty += teamSkill(state, "seller_mgr") * 0.15;
+      if (fillRate < 0.85) loyalty -= 1;
+      loyalty = clamp(loyalty, 0, 100);
+
+      const moraleDelta = profit > 1000 ? 1 : profit < -2000 ? -3 : 0;
+      const team = state.team.map(member => ({ ...member, morale: clamp(member.morale + moraleDelta, 0, 100) }));
+
+      // --- проекты ---
+      let completedProjects = state.completedProjects;
+      const activeProjects = [];
+      const finishedNames = [];
+      for (const item of state.activeProjects) {
+        const project = projectById(item.id);
+        const done = item.weeksDone + 1 >= item.weeksTotal;
+        if (done) {
+          completedProjects = [...completedProjects, item.id];
+          finishedNames.push(project ? project.name : item.id);
+        } else {
+          activeProjects.push({ ...item, weeksDone: item.weeksDone + 1 });
+        }
       }
 
-      const demand = Math.max(1, Math.round(forecastOrders(state) * (0.9 + Math.random() * 0.2) * eventMultiplier));
-      const fulfilled = Math.min(demand, dailyCapacity(state));
-      const lost = Math.max(0, demand - fulfilled);
-      const commissionRevenue = Math.round(fulfilled * 2200 * (state.commission / 100));
-      const variableCosts = fulfilled * 70;
-      const fixedCosts = 420 + state.warehouseLevel * 80 + state.couriers * 65;
-      const operatingCosts = variableCosts + fixedCosts;
-      const profit = commissionRevenue - operatingCosts;
-      const fillRate = demand > 0 ? fulfilled / demand : 1;
-      const reputation = clamp(state.reputation + (fillRate >= 0.98 ? 1 : fillRate >= 0.86 ? 0 : -2), 35, 100);
-      let sellerLoyalty = state.sellerLoyalty;
-      if (state.commission >= 17) sellerLoyalty -= 2;
-      else if (state.commission >= 15) sellerLoyalty -= 1;
-      else if (state.commission <= 10) sellerLoyalty += 1;
-      if (fillRate < 0.75) sellerLoyalty -= 1;
-      sellerLoyalty = clamp(sellerLoyalty, 30, 100);
+      // --- конкуренты ---
+      const competitorEvent = Math.random();
+      const competitors = state.competitors.map(competitor => ({
+        ...competitor,
+        weight: clamp(competitor.weight * (0.97 + Math.random() * 0.06), 0.1, 1)
+      }));
+
+      // --- событие недели ---
+      let event = null;
+      if (state.week >= 2 && Math.random() < 0.55) {
+        const pool = EVENTS.filter(item => !state.event || item.id !== state.event.id);
+        event = { id: pick(pool).id };
+      }
 
       const report = {
-        day: today,
-        demand,
-        fulfilled,
-        lost,
-        revenue: commissionRevenue,
-        costs: operatingCosts,
-        profit,
+        week: state.week,
+        demand, fulfilled, lost,
+        revenue, costs, profit,
+        streams: { commission: commissionRevenue, services: servicesRevenue, subscription: subscriptionRevenue },
+        breakdown: { salaries, rent, ops, marketing: marketingUpkeep, projects: projectUpkeep },
         fillRate: Math.round(fillRate * 100),
-        reputation,
-        reputationChange: reputation - state.reputation,
-        sellerLoyalty,
-        event: eventName
+        share, shareChange: share - state.share,
+        rpGain
       };
-      const history = [...state.history, commissionRevenue].slice(-7);
-      const sign = profit >= 0 ? "+" : "−";
-      const notice = `День ${today} завершён: доставлено ${number(fulfilled)} из ${number(demand)} заказов, ${sign}${money(Math.abs(profit))} в кассу. Событие: ${eventName}.`;
 
-      return awardGoals({
+      let next = {
         ...state,
-        day: today + 1,
+        week: state.week + 1,
         cash: state.cash + profit,
-        reputation,
-        sellerLoyalty,
-        adDays: Math.max(0, state.adDays - 1),
-        totalOrders: state.totalOrders + fulfilled,
-        pendingOrders: 0,
-        bestProfit: Math.max(state.bestProfit || 0, profit),
-        completedGoals: Array.isArray(state.completedGoals) ? state.completedGoals : [],
-        history,
+        share,
+        reputation, sellerLoyalty: loyalty, team,
+        competitors,
+        researchPoints: state.researchPoints + rpGain,
+        activeProjects,
+        completedProjects,
+        marketingWeeksLeft: Math.max(0, state.marketingWeeksLeft - 1),
+        tempDemand: state.tempDemand.weeks > 0 ? { weeks: state.tempDemand.weeks - 1, mult: state.tempDemand.mult } : state.tempDemand,
         lastReport: report,
-        notice
-      });
+        history: [...state.history, { week: state.week, revenue, profit, share, demand, fulfilled }].slice(-8),
+        event
+      };
+
+      const sign = profit >= 0 ? "+" : "−";
+      next = pushLog(next, `Неделя ${report.week}: выполнено ${number(fulfilled)} из ${number(demand)} заказов, итог ${sign}${money(Math.abs(profit))}.`, profit >= 0 ? "good" : "bad");
+      for (const name of finishedNames) {
+        next = pushLog(next, `Проект «${name}» завершён!`, "good");
+      }
+      if (competitorEvent < 0.25) {
+        const competitor = pick(state.competitors);
+        next = pushLog(next, `${competitor.name} запустил(а) новую акцию на своём рынке.`, "info");
+      }
+      next.notice = `Неделя ${report.week} закрыта: прибыль ${sign}${money(Math.abs(profit))}.`;
+      next = awardGoals(next);
+      return next;
     }
 
     return state;
   }
+
+  // ============================== UI: ОБЩЕЕ ==============================
 
   function navButton(item, activeView) {
     return `<button class="nav-link ${activeView === item.id ? "active" : ""}" data-action="NAV" data-view="${item.id}" aria-current="${activeView === item.id ? "page" : "false"}">
@@ -363,7 +753,7 @@
       <aside class="sidebar">
         <div class="brand-row">
           <div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></div>
-          <div><div class="brand-name">СВОЙ МАРКЕТ</div><div class="brand-subtitle">маленький бизнес, большие планы</div></div>
+          <div><div class="brand-name">СВОЙ МАРКЕТ</div><div class="brand-subtitle">тайкун: симулятор платформы</div></div>
         </div>
         <div class="company-card">
           <div class="company-avatar">С</div>
@@ -375,23 +765,29 @@
         <div class="sidebar-spacer"></div>
         <div class="sidebar-tip">
           <div class="tip-icon">✦</div>
-          <div><strong>Совет дня</strong><p>Не забывайте следить за мощностью доставки: спрос может вырасти внезапно.</p></div>
+          <div><strong>Совет</strong><p>Держите мораль команды высокой: недовольные сотрудники работают вполсилы.</p></div>
         </div>
         <div class="sidebar-bottom">
           <div class="save-status"><span class="status-dot"></span><span>Сохранение включено</span></div>
           <button class="reset-button" data-action="RESET">↻ <span>Новая игра</span></button>
-          <div class="engine-stamp">MINI TYCOON ENGINE <span>v0.3</span></div>
+          <div class="engine-stamp">MINI TYCOON ENGINE <span>v0.4</span></div>
         </div>
       </aside>
       <main class="main-area">
         <header class="topbar">
           <div class="breadcrumbs"><span>Лавка Плюс</span><span class="crumb-divider">/</span><strong>${esc(activeTitle)}</strong></div>
-          <div class="topbar-right"><button class="topbar-tool" data-action="OPEN_TAB" title="Открыть игру в отдельной вкладке" aria-label="Открыть игру в отдельной вкладке"><span class="tool-icon">↗</span><span class="tool-label">В отдельную вкладку</span></button><button class="topbar-tool fullscreen-tool" data-action="TOGGLE_FULLSCREEN" title="${fullscreenLabel}" aria-label="${fullscreenLabel}"><span class="tool-icon">⛶</span><span class="tool-label">${fullscreenLabel}</span></button><span class="city-pill"><span class="city-dot"></span>ПИЛОТНЫЙ ГОРОД</span><span class="day-pill">ДЕНЬ ${String(state.day).padStart(2, "0")}</span><div class="profile-avatar">Л</div></div>
+          <div class="topbar-right">
+            <button class="topbar-tool" data-action="OPEN_TAB" title="Открыть игру в отдельной вкладке" aria-label="Открыть игру в отдельной вкладке"><span class="tool-icon">↗</span><span class="tool-label">В отдельную вкладку</span></button>
+            <button class="topbar-tool fullscreen-tool" data-action="TOGGLE_FULLSCREEN" title="${fullscreenLabel}" aria-label="${fullscreenLabel}"><span class="tool-icon">⛶</span><span class="tool-label">${fullscreenLabel}</span></button>
+            <span class="city-pill"><span class="city-dot"></span>${esc(STAGES[state.stage].name.toUpperCase())}</span>
+            <span class="day-pill">НЕДЕЛЯ ${String(state.week).padStart(2, "0")}</span>
+            <div class="profile-avatar">Л</div>
+          </div>
         </header>
         <div class="page-content">
           ${state.notice ? `<div class="notice" role="status"><span class="notice-symbol">✦</span><p>${esc(state.notice)}</p><button data-action="CLEAR_NOTICE" aria-label="Закрыть уведомление">×</button></div>` : ""}
           ${content}
-          <footer class="page-footer"><span>СВОЙ МАРКЕТ · ПИЛОТНАЯ ВЕРСИЯ</span><span>Игра сохраняется автоматически в этом браузере</span></footer>
+          <footer class="page-footer"><span>СВОЙ МАРКЕТ · ТАЙКУН · ГЛУБОКАЯ СИМУЛЯЦИЯ</span><span>Игра сохраняется автоматически в этом браузере</span></footer>
         </div>
       </main>
     </div>`;
@@ -407,343 +803,325 @@
 
   function renderChart(state) {
     const values = state.history.slice(-7);
-    const hasData = values.some(value => value > 0);
-    const days = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
-    const padded = Array(7 - values.length).fill(0).concat(values);
-    const max = Math.max(...padded, 1);
+    const hasData = values.length > 0;
+    const padded = Array(Math.max(0, 7 - values.length)).fill(null).concat(values);
+    const max = Math.max(1, ...padded.map(item => item ? item.revenue : 0));
     return `<div class="chart-wrap">
-      ${!hasData ? `<div class="chart-empty"><span>↗</span><strong>Пока нет статистики</strong><p>Завершите первый день, и здесь появится выручка.</p></div>` : ""}
+      ${!hasData ? `<div class="chart-empty"><span>↗</span><strong>Пока нет статистики</strong><p>Завершите первую неделю — и здесь появится выручка.</p></div>` : ""}
       <div class="chart-grid-lines"><i></i><i></i><i></i></div>
-      <div class="chart-bars">${padded.map((value, index) => {
-        const height = hasData ? Math.max(7, Math.round(value / max * 100)) : 5;
-        const label = days[(state.day - 1 - (6 - index) + 70) % 7];
-        return `<div class="chart-column"><div class="chart-track"><div class="chart-bar ${hasData ? "" : "empty"}" style="height:${height}%" title="${money(value)}"></div></div><span>${label}</span></div>`;
+      <div class="chart-bars">${padded.map((item, index) => {
+        const revenue = item ? item.revenue : 0;
+        const height = hasData ? Math.max(7, Math.round(revenue / max * 100)) : 5;
+        const label = item ? `Н${item.week}` : "";
+        return `<div class="chart-column"><div class="chart-track"><div class="chart-bar ${hasData && item ? "" : "empty"}" style="height:${height}%" title="${item ? `${money(item.revenue)} · прибыль ${money(item.profit)}` : ""}"></div></div><span>${label}</span></div>`;
       }).join("")}</div>
     </div>`;
   }
 
-  function renderObjectives(state) {
-    const completed = new Set(Array.isArray(state.completedGoals) ? state.completedGoals : []);
+  function renderGoals(state) {
+    const done = new Set(state.goalsDone);
     return `<section class="objectives-section">
-      <div class="section-heading"><div><div class="eyebrow">СЦЕНАРИЙ · ПИЛОТНЫЙ ГОРОД</div><h2>Задачи основателя</h2></div><span>Выполните цель — получите денежную награду</span></div>
+      <div class="section-heading"><div><div class="eyebrow">ЦЕЛИ ОСНОВАТЕЛЯ</div><h2>Дорожная карта</h2></div><span>Выполняйте цели — получайте финансирование</span></div>
       <div class="objectives-grid">${GOALS.map(goal => {
-        const done = completed.has(goal.id);
+        const isDone = done.has(goal.id);
         const progress = Math.min(goalProgress(state, goal), goal.target);
         const fill = clamp(Math.round(progress / goal.target * 100), 0, 100);
-        return `<article class="objective-card ${done ? "is-complete" : ""}">
-          <div class="objective-top"><span class="objective-icon">${goal.icon}</span><span class="objective-reward">${done ? "✓ ВЫПОЛНЕНО" : `НАГРАДА ${money(goal.reward)}`}</span></div>
+        return `<article class="objective-card ${isDone ? "is-complete" : ""}">
+          <div class="objective-top"><span class="objective-icon">${goal.icon}</span><span class="objective-reward">${isDone ? "✓ ВЫПОЛНЕНО" : `НАГРАДА ${money(goal.reward)}`}</span></div>
           <h3>${goal.title}</h3><p>${goal.description}</p>
           <div class="objective-progress"><div style="width:${fill}%"></div></div>
-          <div class="objective-foot"><span>${goalProgressLabel(state, goal)}</span><strong>${done ? "ГОТОВО" : `${fill}%`}</strong></div>
+          <div class="objective-foot"><span>${number(progress)} / ${number(goal.target)}</span><strong>${isDone ? "ГОТОВО" : `${fill}%`}</strong></div>
         </article>`;
       }).join("")}</div>
     </section>`;
   }
 
-  function renderDailyReport(state) {
+  function renderReport(state) {
     const report = state.lastReport;
     if (!report) {
-      return `<section class="panel report-panel report-empty-panel"><div class="report-empty-icon">▤</div><div><div class="eyebrow">ОТЧЁТ УПРАВЛЯЮЩЕГО</div><h2>Первый день ещё впереди</h2><p>Завершите смену — разберём спрос, доставку, расходы и прибыль, чтобы решить, что улучшить дальше.</p></div><span class="report-next">ПОСЛЕ СМЕНЫ ↘</span></section>`;
+      return `<section class="panel report-panel report-empty-panel"><div class="report-empty-icon">▤</div><div><div class="eyebrow">ОТЧЁТ НЕДЕЛИ</div><h2>Первая неделя ещё впереди</h2><p>Завершите неделю — разберём спрос, выручку, расходы и прибыль, чтобы решить, что делать дальше.</p></div><span class="report-next">ПОСЛЕ НЕДЕЛИ ↘</span></section>`;
     }
-    const fillRate = Number.isFinite(report.fillRate) ? report.fillRate : (report.demand ? Math.round(report.fulfilled / report.demand * 100) : 0);
-    const reportReputation = Number.isFinite(report.reputation) ? report.reputation : state.reputation;
-    const reputationChange = Number.isFinite(report.reputationChange) ? report.reputationChange : 0;
-    let insight;
-    if (report.lost > 0) insight = `Не обработано ${number(report.lost)} заказов. Усильте самое слабое звено — склад или курьерскую команду.`;
-    else if (report.profit < 0) insight = "День закрылся с убытком. Проверьте комиссию и постоянные расходы перед следующей сменой.";
-    else if (fillRate >= 98) insight = "Все заказы доставлены. Можно осторожно привлекать больше покупателей или подключать новых продавцов.";
-    else insight = "Большую часть спроса удалось обслужить. Следите за загрузкой, если планируете рекламную кампанию.";
-    const profitSign = report.profit >= 0 ? "+" : "−";
+    const sign = report.profit >= 0 ? "+" : "−";
     return `<section class="panel report-panel">
-      <div class="panel-heading report-heading"><div><div class="eyebrow">ОТЧЁТ УПРАВЛЯЮЩЕГО · ДЕНЬ ${String(report.day).padStart(2, "0")}</div><h2>Как прошла смена?</h2></div><span class="report-event">${esc(report.event)}</span></div>
+      <div class="panel-heading report-heading"><div><div class="eyebrow">ОТЧЁТ · НЕДЕЛЯ ${String(report.week).padStart(2, "0")}</div><h2>Как прошла неделя?</h2></div><span class="report-event">Заполнение ${report.fillRate}%</span></div>
       <div class="report-stats">
         <div class="report-stat"><span>Спрос</span><strong>${number(report.demand)}</strong><small>заказов</small></div>
-        <div class="report-stat"><span>Доставлено</span><strong>${number(report.fulfilled)}</strong><small>${fillRate}% от спроса</small></div>
-        <div class="report-stat"><span>Комиссия</span><strong>${money(report.revenue)}</strong><small>до расходов</small></div>
-        <div class="report-stat"><span>Расходы</span><strong>${money(report.costs)}</strong><small>логистика и содержание</small></div>
-        <div class="report-stat report-profit ${report.profit >= 0 ? "positive" : "negative"}"><span>Чистый итог</span><strong>${profitSign}${money(Math.abs(report.profit))}</strong><small>прибыль за день</small></div>
+        <div class="report-stat"><span>Выручка</span><strong>${money(report.revenue)}</strong><small>комиссия ${money(report.streams.commission)} · сервисы ${money(report.streams.services)}${report.streams.subscription ? ` · подписки ${money(report.streams.subscription)}` : ""}</small></div>
+        <div class="report-stat"><span>Расходы</span><strong>${money(report.costs)}</strong><small>зарплаты ${money(report.breakdown.salaries)} · логистика ${money(report.breakdown.ops)} · офис ${money(report.breakdown.rent)}</small></div>
+        <div class="report-stat"><span>Очки науки</span><strong>+${number(report.rpGain)}</strong><small>за неделю</small></div>
+        <div class="report-stat report-profit ${report.profit >= 0 ? "positive" : "negative"}"><span>Чистый итог</span><strong>${sign}${money(Math.abs(report.profit))}</strong><small>прибыль за неделю</small></div>
       </div>
-      <div class="report-insight"><span>✦</span><p><strong>На заметку:</strong> ${insight}</p><span class="report-reputation">Репутация ${reportReputation}<small>${reputationChange > 0 ? ` +${reputationChange}` : reputationChange < 0 ? ` ${reputationChange}` : " · без изменений"}</small></span></div>
+      <div class="report-insight"><span>✦</span><p><strong>Доля рынка:</strong> ${report.share.toFixed(1)}% (${report.shareChange >= 0 ? "+" : "−"}${Math.abs(report.shareChange).toFixed(2)} п.п.)${report.lost > 0 ? ` · <strong>Потеряно ${number(report.lost)} заказов</strong> — не хватило мощностей.` : ""}</p></div>
     </section>`;
   }
 
-  function actionCard({ icon, title, description, action, buttonLabel, disabled = false, tag = "" }) {
-    return `<article class="action-card"><div class="action-card-top"><span class="action-icon">${icon}</span>${tag ? `<span class="tiny-tag">${tag}</span>` : ""}</div><h3>${title}</h3><p>${description}</p><button class="text-action" data-action="${action}" ${disabled ? "disabled" : ""}>${buttonLabel}<span>→</span></button></article>`;
+  function renderLog(state) {
+    return `<section class="panel log-panel">
+      <div class="panel-heading"><div><div class="eyebrow">ЛЕНТА СОБЫТИЙ</div><h2>Что происходит в компании</h2></div></div>
+      <div class="log-list">${(state.log || []).map(item => `
+        <div class="log-item ${esc(item.tone)}"><span class="log-week">Н${String(item.week).padStart(2, "0")}</span><p>${esc(item.text)}</p></div>`).join("")}
+      </div>
+    </section>`;
   }
 
-  function renderOverview(state) {
-    const forecast = forecastOrders(state);
-    const capacity = dailyCapacity(state);
-    const capacityFill = clamp(Math.round(forecast / Math.max(1, capacity) * 100), 5, 100);
-    const latest = state.lastReport;
-    const warehouseCostValue = warehouseCost(state);
-    const canUpgrade = state.cash >= warehouseCostValue && state.warehouseLevel < 6;
-    const hireCost = sellerCost(state);
-    const canHireSeller = state.cash >= hireCost && state.sellers.length < SELLER_CATALOG.length;
+  // ============================== UI: ЭКРАНЫ ==============================
 
-    return `${pageHeading(`ПИЛОТНЫЙ ГОРОД · ДЕНЬ ${String(state.day).padStart(2, "0")}`, "Добро пожаловать в свой маркетплейс", "Подключайте продавцов, доставляйте заказы и превратите небольшую платформу в любимое место покупок.", `<button class="primary-button" data-action="END_DAY">Завершить день <span>→</span></button>`)}
+  function renderOverview(state) {
+    const forecast = forecastDemand(state);
+    const cap = dailyCapacity(state);
+    const capacityFill = clamp(Math.round(forecast / Math.max(1, cap) * 100), 3, 100);
+    const latest = state.lastReport;
+    const shares = marketShares(state);
+    return `${pageHeading(`${esc(STAGES[state.stage].name.toUpperCase())} · НЕДЕЛЯ ${String(state.week).padStart(2, "0")}`, "Кабинет основателя", "Управляйте стратегией платформы: команда, технологии, проекты и рынок — каждый ход решает.", `<button class="primary-button" data-action="END_WEEK">Завершить неделю <span>→</span></button>`)}
       <section class="hero-card">
         <div class="hero-copy">
-          <div class="hero-pill"><span class="pulse"></span> ВАША КОМАНДА УЖЕ В ДЕЛЕ</div>
-          <h2>От первой посылки<br>до большой платформы.</h2>
-          <p>Сегодня на площадке ожидается <strong>${number(forecast)} заказов</strong>. Убедитесь, что склад и курьеры готовы к наплыву покупателей.</p>
-          <div class="hero-bottom"><button class="hero-button" data-action="END_DAY">Закрыть день <span>→</span></button><span class="hero-caption">Отчёт появится сразу после смены</span></div>
+          <div class="hero-pill"><span class="pulse"></span> ${state.event ? "СОБЫТИЕ ТРЕБУЕТ РЕШЕНИЯ" : "НЕДЕЛЯ В РАБОТЕ"}</div>
+          <h2>От пилотного города<br>до международного рынка.</h2>
+          <p>Ожидаемый спрос — <strong>${number(forecast)} заказов</strong>, мощности — <strong>${number(cap)}</strong>. Решайте, куда вложить ресурсы этой недели.</p>
+          <div class="hero-bottom"><button class="hero-button" data-action="END_WEEK">Закрыть неделю <span>→</span></button><span class="hero-caption">Отчёт и события — сразу после смены</span></div>
         </div>
         <div class="hero-illustration" aria-hidden="true">
-          <div class="illustration-sun"></div><div class="illustration-orbit orbit-one"></div><div class="illustration-orbit orbit-two"></div>
-          <svg class="warehouse-art" viewBox="0 0 330 230" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M26 100L164 28L304 100V207H26V100Z" fill="#F5F8E8"/>
-            <path d="M17 102L164 22L313 102" stroke="#D9EAA9" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
-            <path d="M70 112H258V207H70V112Z" fill="#E3EFD0"/>
-            <path d="M93 136H151V207H93V136Z" fill="#B4D48A"/>
-            <path d="M173 136H232V170H173V136Z" fill="#BDD997"/>
-            <path d="M173 181H232V207H173V181Z" fill="#BDD997"/>
-            <path d="M110 136V207M134 136V207" stroke="#9DBA70" stroke-width="3"/>
-            <path d="M49 106V202M276 106V202" stroke="#D2E4B5" stroke-width="5"/>
-            <rect x="221" y="67" width="43" height="32" rx="6" fill="#D7EAAC"/>
-            <path d="M232 81H253M242.5 70V92" stroke="#719B59" stroke-width="3" stroke-linecap="round"/>
-            <path d="M36 207H294" stroke="#F5F8E8" stroke-width="8" stroke-linecap="round"/>
-            <path d="M67 206L40 226M272 206L299 226" stroke="#B6D18C" stroke-width="6" stroke-linecap="round"/>
-          </svg>
-          <div class="floating-box box-one">✦ <span>НОВЫЕ ЗАКАЗЫ</span></div>
-          <div class="floating-box box-two"><span class="float-dot"></span> СКЛАД ГОТОВ</div>
+          <div class="illustration-sun"></div>
+          <div class="share-orb"><strong>${state.share.toFixed(1)}%</strong><span>ДОЛЯ РЫНКА</span></div>
+          <div class="floating-box box-one">✦ <span>НАУКА +${researchPerWeek(state)}/НЕД</span></div>
+          <div class="floating-box box-two"><span class="float-dot"></span> КОМАНДА: ${state.team.length}/${teamCap(state)}</div>
           <div class="hero-ground"></div>
         </div>
       </section>
 
       <section class="metrics-grid" aria-label="Показатели компании">
-        ${metricCard("₽", "Деньги компании", money(state.cash), latest ? `${latest.profit >= 0 ? "+" : "−"}${money(Math.abs(latest.profit))} за прошлый день` : "Стартовый бюджет", "green")}
-        ${metricCard("↗", "Прогноз заказов", `${number(forecast)} <small>заказов</small>`, state.adDays > 0 ? `Реклама · ${state.adDays} дн.` : "на сегодняшний день", "lime")}
-        ${metricCard("▧", "Продавцы", `${state.sellers.length} <small>партнёра</small>`, `${number(state.sellers.reduce((sum, seller) => sum + seller.products, 0))} товаров в каталоге`, "peach")}
-        ${metricCard("✦", "Репутация", `${state.reputation}<small> / 100</small>`, state.reputation >= 75 ? "Покупатели довольны" : "Растёт с каждой доставкой", "lavender")}
+        ${metricCard("₽", "Касса", money(state.cash), latest ? `${latest.profit >= 0 ? "+" : "−"}${money(Math.abs(latest.profit))} за неделю` : "Стартовый капитал", "green")}
+        ${metricCard("↗", "Доля рынка", `${state.share.toFixed(1)}<small>%</small>`, shares[1] ? `Лидер: ${shares.slice(1).sort((a, b) => b.share - a.share)[0].name}` : "", "lime")}
+        ${metricCard("♙", "Команда", `${state.team.length} <small>чел.</small>`, `Мораль: ${Math.round(state.team.reduce((s, m) => s + m.morale, 0) / Math.max(1, state.team.length))}%`, "peach")}
+        ${metricCard("⌘", "Очки науки", `${number(state.researchPoints)} <small>RP</small>`, `+${researchPerWeek(state)} в неделю`, "lavender")}
+        ${metricCard("✦", "Репутация", `${Math.round(state.reputation)}<small> / 100</small>`, state.reputation >= 75 ? "Покупатели доверяют вам" : "Растёт с качеством доставки", "lavender")}
       </section>
 
       <section class="dashboard-grid">
         <article class="panel chart-panel">
-          <div class="panel-heading"><div><div class="eyebrow">ФИНАНСЫ</div><h2>Комиссионная выручка</h2></div><span class="period-chip">ПОСЛЕДНИЕ 7 ДНЕЙ</span></div>
+          <div class="panel-heading"><div><div class="eyebrow">ФИНАНСЫ</div><h2>Выручка по неделям</h2></div><span class="period-chip">ПОСЛЕДНИЕ 7 НЕДЕЛЬ</span></div>
           ${renderChart(state)}
-          <div class="panel-foot"><span><i class="legend-dot"></i> Комиссия с выполненных заказов</span><strong>${latest ? money(latest.revenue) : "—"}</strong></div>
+          <div class="panel-foot"><span><i class="legend-dot"></i> Выручка платформы</span><strong>${latest ? money(latest.revenue) : "—"}</strong></div>
         </article>
         <article class="panel demand-panel">
-          <div class="panel-heading"><div><div class="eyebrow">ОПЕРАЦИИ</div><h2>План на сегодня</h2></div><span class="mini-status"><i></i> В работе</span></div>
+          <div class="panel-heading"><div><div class="eyebrow">ОПЕРАЦИИ</div><h2>План на неделю</h2></div><span class="mini-status"><i></i> В работе</span></div>
           <div class="demand-number">${number(forecast)} <span>заказов</span></div>
-          <p class="muted-copy">Текущая пропускная способность — ${number(capacity)} заказов в день.</p>
+          <p class="muted-copy">Мощность системы — ${number(cap)} заказов в неделю.</p>
           <div class="capacity-progress"><div style="width:${capacityFill}%"></div></div>
           <div class="capacity-labels"><span>Нагрузка на логистику</span><strong>${capacityFill}%</strong></div>
-          ${capacity < forecast ? `<div class="warning-inline">⚠ Не хватает мощности: часть заказов может потеряться.</div>` : `<div class="success-inline">✓ Склад и курьеры готовы к прогнозу.</div>`}
+          ${cap < forecast ? `<div class="warning-inline">⚠ Не хватает мощности: часть заказов будет потеряна.</div>` : `<div class="success-inline">✓ Склад и курьеры справятся с прогнозом.</div>`}
           <div class="demand-divider"></div>
-          <div class="demand-details"><span>Склад <strong>${warehouseCapacity(state)} / день</strong></span><span>Курьеры <strong>${courierCapacity(state)} / день</strong></span></div>
+          <div class="demand-details"><span>Склад <strong>${warehouseCapacity(state)} / нед</strong></span><span>Курьеры <strong>${courierCapacity(state)} / нед</strong></span><span>Комиссия <strong>${state.commission}%</strong></span></div>
         </article>
       </section>
-      ${renderObjectives(state)}
-      ${renderDailyReport(state)}
 
-      <div class="section-heading"><div><div class="eyebrow">СЛЕДУЮЩИЙ ШАГ</div><h2>Куда вложить силы?</h2></div><span>Выберите улучшение для платформы</span></div>
-      <section class="actions-grid">
-        ${actionCard({ icon: "＋", title: "Новый продавец", description: "Больше товаров — больше причин зайти на площадку.", action: "HIRE_SELLER", buttonLabel: state.sellers.length >= SELLER_CATALOG.length ? "Все подключены" : `Подключить · ${money(hireCost)}`, disabled: !canHireSeller, tag: "+ спрос" })}
-        ${actionCard({ icon: "▣", title: "Улучшить склад", description: "Увеличьте дневную мощность обработки заказов.", action: "UPGRADE_WAREHOUSE", buttonLabel: state.warehouseLevel >= 6 ? "Максимальный уровень" : `Улучшить · ${money(warehouseCostValue)}`, disabled: !canUpgrade, tag: `УРОВЕНЬ ${state.warehouseLevel}` })}
-        ${actionCard({ icon: "↗", title: "Запустить рекламу", description: "Привлеките больше покупателей на три игровых дня.", action: "RUN_ADS", buttonLabel: state.adDays > 0 ? `Активна · ${state.adDays} дн.` : `Запустить · ${money(950)}`, disabled: state.adDays > 0 || state.cash < 950, tag: "+32% спроса" })}
-        ${actionCard({ icon: "⌁", title: "Нанять курьера", description: "Расширьте географию и ускорьте доставку.", action: "HIRE_COURIER", buttonLabel: state.couriers >= 10 ? "Команда укомплектована" : `Нанять · ${money(courierCost(state))}`, disabled: state.couriers >= 10 || state.cash < courierCost(state), tag: `В КОМАНДЕ ${state.couriers}` })}
+      ${state.activeProjects.length ? `<section class="panel projects-strip">
+        <div class="panel-heading"><div><div class="eyebrow">В РАБОТЕ</div><h2>Активные проекты</h2></div><button class="text-action" data-action="NAV" data-view="projects">Все проекты <span>→</span></button></div>
+        <div class="strip-items">${state.activeProjects.map(item => {
+          const project = projectById(item.id);
+          const fill = Math.round((item.weeksDone + 1) / item.weeksTotal * 100);
+          return `<div class="strip-item"><strong>${esc(project ? project.name : item.id)}</strong><div class="small-progress"><div style="width:${fill}%"></div></div><span>${item.weeksDone} / ${item.weeksTotal} нед.</span></div>`;
+        }).join("")}</div>
+      </section>` : ""}
+
+      ${renderGoals(state)}
+      ${renderReport(state)}
+      ${renderLog(state)}`;
+  }
+
+  function teamMemberCard(member, index) {
+    const role = roleById(member.role);
+    const moraleTone = member.morale >= 65 ? "good" : member.morale >= 40 ? "mid" : "low";
+    return `<article class="member-card">
+      <div class="member-avatar ${esc(role.id)}">${esc(role.icon)}</div>
+      <div class="member-info">
+        <div class="member-name-row"><h3>${esc(member.name)}</h3><span class="member-role">${esc(role.name)}</span></div>
+        <div class="member-meta">${esc(role.effect)}</div>
+        <div class="member-stats">
+          <span class="skill-pips" title="Навык ${member.skill}">${"◆".repeat(member.skill)}${"◇".repeat(Math.max(0, 8 - member.skill))}</span>
+          <span class="member-salary">${money(member.salary)} / нед</span>
+        </div>
+        <div class="morale-row"><span>Мораль</span><div class="morale-track"><div class="${moraleTone}" style="width:${member.morale}%"></div></div><strong>${Math.round(member.morale)}%</strong></div>
+      </div>
+      <div class="member-actions">
+        <button class="tiny-button" data-action="TRAIN" data-id="${member.id}" title="Обучение: +1 навык за 6 000 ₽">Обучить · 6 000 ₽</button>
+        <button class="tiny-button danger" data-action="FIRE" data-id="${member.id}" title="Уволить с выходным пособием">Уволить</button>
+      </div>
+    </article>`;
+  }
+
+  function renderTeam(state) {
+    const officeCost = 18000 + state.officeLevel * 12000;
+    return `${pageHeading("ЛЮДИ РЕШАЮТ ВСЁ", "Команда", "Нанимайте специалистов, развивайте их навыки и следите за моралью. Каждый сотрудник приносит компании конкретную пользу.", `<button class="primary-button" data-action="PAY_BONUS">Премия · 4 000 ₽</button>`)}
+      <section class="metrics-grid team-metrics">
+        ${metricCard("♙", "Сотрудники", `${state.team.length} <small>/ ${teamCap(state)}</small>`, `Офис уровня ${state.officeLevel}`, "peach")}
+        ${metricCard("◇", "Средняя мораль", `${Math.round(state.team.reduce((s, m) => s + m.morale, 0) / Math.max(1, state.team.length))}<small>%</small>`, "Влияет на всю работу", "mint")}
+        ${metricCard("₽", "Фонд оплаты", `${money(weeklySalaries(state))} <small>/ нед</small>`, "Списывается каждую неделю", "green")}
+        ${metricCard("⌘", "Наука от команды", `+${researchPerWeek(state)} <small>RP</small>`, "Разработчики и аналитики", "lavender")}
+      </section>
+
+      <section class="panel roster-panel">
+        <div class="panel-heading"><div><div class="eyebrow">ШТАТ</div><h2>Ваши сотрудники</h2></div><div class="roster-tools"><button class="text-action" data-action="TEAMBUILDING">Тимбилдинг · 6 000 ₽ <span>→</span></button></div></div>
+        <div class="member-list">${state.team.map(teamMemberCard).join("")}</div>
+      </section>
+
+      <section class="panel candidates-panel">
+        <div class="panel-heading"><div><div class="eyebrow">РЫНОК ТРУДА</div><h2>Кандидаты на работу</h2></div><span class="count-chip">Подписание = 2 оклада</span></div>
+        <div class="candidate-grid">${state.candidates.map(candidate => {
+          const role = roleById(candidate.role);
+          const canHire = state.team.length < teamCap(state) && state.cash >= candidate.salary * 2;
+          return `<article class="candidate-card">
+            <div class="member-avatar ${esc(role.id)}">${esc(role.icon)}</div>
+            <h3>${esc(candidate.name)}</h3>
+            <div class="candidate-role">${esc(role.name)}</div>
+            <p class="candidate-effect">${esc(role.effect)}</p>
+            <div class="candidate-stats"><span>Навык ${"◆".repeat(candidate.skill)}${"◇".repeat(Math.max(0, 8 - candidate.skill))}</span><strong>${money(candidate.salary)} / нед</strong></div>
+            <button class="wide-button" data-action="HIRE" data-id="${candidate.id}" ${canHire ? "" : "disabled"}>Нанять · ${money(candidate.salary * 2)} <span>→</span></button>
+          </article>`;
+        }).join("")}</div>
+      </section>
+
+      <section class="panel office-panel">
+        <div class="panel-heading"><div><div class="eyebrow">ОФИС</div><h2>Расширение пространства</h2></div><span class="tiny-tag">УРОВЕНЬ ${state.officeLevel} / 5</span></div>
+        <p class="muted-copy">Больше офис — больше людей и слотов для проектов. Сейчас: команда до ${teamCap(state)} чел., проектов ${projectSlots(state)} одновременно.</p>
+        <button class="wide-button" data-action="UPGRADE_OFFICE" ${state.officeLevel >= 5 || state.cash < officeCost ? "disabled" : ""}>${state.officeLevel >= 5 ? "Максимальный уровень" : `Расширить офис · ${money(officeCost)}`} <span>→</span></button>
       </section>`;
   }
 
-  function commissionCard(state) {
-    const fee = Math.round(2200 * state.commission / 100);
-    const loyaltyFill = clamp(state.sellerLoyalty, 0, 100);
-    return `<article class="panel commission-panel">
-      <div class="panel-heading"><div><div class="eyebrow">ПРАВИЛА ПЛОЩАДКИ</div><h2>Комиссия продавца</h2></div><span class="commission-badge">${state.commission}%</span></div>
-      <p class="muted-copy">Доля платформы с заказа. Например, с покупки на 2 200 ₽ ваша комиссия — <strong>${money(fee)}</strong>.</p>
-      <div class="range-wrap"><input type="range" min="8" max="22" step="1" value="${state.commission}" data-action="SET_COMMISSION" aria-label="Комиссия с продавцов"><div class="range-labels"><span>8% · мягко</span><span>22% · смело</span></div></div>
-      <div class="commission-advice">${state.commission >= 15 ? "⚠" : "✦"} ${commissionMessage(state.commission)}</div>
-      <div class="loyalty-row"><div><span>Лояльность продавцов</span><strong>${state.sellerLoyalty}%</strong></div><div class="loyalty-track"><div style="width:${loyaltyFill}%"></div></div></div>
+  function techCard(state, tech) {
+    const done = state.completedTechs.includes(tech.id);
+    const missing = tech.requires.filter(id => !state.completedTechs.includes(id));
+    const locked = missing.length > 0;
+    const affordable = state.researchPoints >= tech.rp && state.cash >= tech.money;
+    return `<article class="tech-card ${done ? "is-done" : ""} ${locked ? "is-locked" : ""}">
+      <div class="tech-head"><span class="tech-icon">${done ? "✓" : locked ? "🔒" : "◈"}</span><span class="tech-cost">${tech.rp} RP · ${money(tech.money)}</span></div>
+      <h3>${esc(tech.name)}</h3>
+      <p class="tech-desc">${esc(tech.desc)}</p>
+      <div class="tech-effect">${esc(tech.effectText)}</div>
+      ${done ? `<div class="tech-status">ИЗУЧЕНО</div>`
+        : locked ? `<div class="tech-status locked">Нужно: ${missing.map(id => techById(id) ? techById(id).name : id).map(esc).join(", ")}</div>`
+        : `<button class="wide-button" data-action="BUY_TECH" data-id="${tech.id}" ${affordable ? "" : "disabled"}>Изучить <span>→</span></button>`}
     </article>`;
   }
 
-  function sellerCard(seller, index) {
-    return `<article class="seller-card">
-      <div class="seller-avatar ${esc(seller.tint)}">${esc(seller.icon)}</div>
-      <div class="seller-info"><div class="seller-name-row"><h3>${esc(seller.name)}</h3><span class="seller-status"><i></i> Активен</span></div><div class="seller-meta">${esc(seller.category)} <span>·</span> ${number(seller.products)} товаров</div></div>
-      <div class="seller-orders"><strong>+${seller.baseOrders}</strong><span>заказов / день</span></div>
-      <div class="seller-index">${String(index + 1).padStart(2, "0")}</div>
+  function renderResearch(state) {
+    return `${pageHeading("ЗНАНИЯ — СИЛА", "Исследования", "Копите очки науки (RP) и вкладывайте их в технологии. Каждая технология даёт постоянное преимущество.", `<div class="rp-badge">⌘ ${number(state.researchPoints)} RP · +${researchPerWeek(state)}/нед</div>`)}
+      <div class="tech-branches">${BRANCHES.map(branch => `
+        <section class="branch-column">
+          <div class="branch-head ${esc(branch.tone)}"><span class="branch-icon">${branch.icon}</span><h2>${esc(branch.name)}</h2></div>
+          ${TECHS.filter(tech => tech.branch === branch.id).map(tech => techCard(state, tech)).join("")}
+        </section>`).join("")}
+      </div>`;
+  }
+
+  function projectCard(state, project) {
+    const active = state.activeProjects.find(item => item.id === project.id);
+    const done = state.completedProjects.includes(project.id);
+    const missing = project.requires.filter(id => !state.completedTechs.includes(id));
+    const cost = project.isExpansion ? STAGES[state.stage].expandCost : project.cost;
+    const isExpansion = project.isExpansion;
+    const expansionBlocked = isExpansion && (state.stage >= STAGES.length - 1 || state.share < 15);
+    const slotsFull = state.activeProjects.length >= projectSlots(state);
+    if (active) {
+      const fill = Math.round((active.weeksDone + 1) / active.weeksTotal * 100);
+      return `<article class="project-card is-active">
+        <div class="project-head"><span class="project-icon">▶</span><span class="tiny-tag">В РАБОТЕ</span></div>
+        <h3>${esc(project.name)}</h3>
+        <p class="project-desc">${esc(project.desc)}</p>
+        <div class="small-progress"><div style="width:${fill}%"></div></div>
+        <div class="project-foot"><span>${active.weeksDone} / ${active.weeksTotal} недель</span><strong>${esc(project.effectText)}</strong></div>
+      </article>`;
+    }
+    return `<article class="project-card ${done ? "is-done" : ""}">
+      <div class="project-head"><span class="project-icon">${done ? "✓" : isExpansion ? "✧" : "▤"}</span><span class="tiny-tag">${done ? "ЗАВЕРШЁН" : `${project.weeks} НЕД.`}</span></div>
+      <h3>${esc(project.name)}</h3>
+      <p class="project-desc">${esc(project.desc)}</p>
+      <div class="project-effect">${esc(project.effectText)}</div>
+      ${done ? `<div class="project-status">ЗАВЕРШЕНО</div>`
+        : missing.length ? `<div class="project-status locked">Требует технологии: ${missing.map(id => techById(id) ? techById(id).name : id).map(esc).join(", ")}</div>`
+        : expansionBlocked ? `<div class="project-status locked">${state.stage >= STAGES.length - 1 ? "Вы на крупнейшем рынке" : `Нужно 15% доли рынка (сейчас ${state.share.toFixed(1)}%)`}</div>`
+        : `<button class="wide-button" data-action="START_PROJECT" data-id="${project.id}" ${slotsFull || state.cash < cost ? "disabled" : ""}>Запустить · ${money(cost)} <span>→</span></button>`}
     </article>`;
   }
 
-  function renderSellers(state) {
-    const cost = sellerCost(state);
-    const canHire = state.cash >= cost && state.sellers.length < SELLER_CATALOG.length;
-    return `${pageHeading("ПАРТНЁРСКАЯ СЕТЬ", "Продавцы и товары", "Хороший ассортимент превращает случайный визит в заказ. Подключайте локальные магазины и развивайте их вместе с платформой.", `<button class="primary-button" data-action="HIRE_SELLER" ${canHire ? "" : "disabled"}>＋ Подключить продавца</button>`)}
-      <section class="seller-summary-grid">
-        <article class="summary-tile"><span class="summary-icon mint">▧</span><div><span>Партнёры</span><strong>${state.sellers.length} <small>/ ${SELLER_CATALOG.length}</small></strong></div></article>
-        <article class="summary-tile"><span class="summary-icon peach">▤</span><div><span>Товаров в каталоге</span><strong>${number(state.sellers.reduce((sum, seller) => sum + seller.products, 0))}</strong></div></article>
-        <article class="summary-tile"><span class="summary-icon lavender">♡</span><div><span>Лояльность продавцов</span><strong>${state.sellerLoyalty}<small>%</small></strong></div></article>
+  function renderProjects(state) {
+    return `${pageHeading("СТРОИМ БУДУЩЕЕ", "Проекты", "Крупные инициативы занимают несколько недель, но дают постоянные преимущества. Слоты проектов растут вместе с офисом.", `<div class="rp-badge">Слоты: ${state.activeProjects.length} / ${projectSlots(state)}</div>`)}
+      <section class="panel projects-board">
+        <div class="panel-heading"><div><div class="eyebrow">ПОРТФЕЛЬ</div><h2>Доступные проекты</h2></div><span class="count-chip">${PROJECTS.filter(p => !state.completedProjects.includes(p.id)).length} доступно</span></div>
+        <div class="project-grid">${PROJECTS.map(project => projectCard(state, project)).join("")}</div>
+      </section>`;
+  }
+
+  function renderMarket(state) {
+    const shares = marketShares(state);
+    const nextStage = STAGES[state.stage + 1];
+    const whCost = 26000 + state.warehouseLevel * 16000;
+    const courierCost = 9000 + Math.max(0, state.couriers - 2) * 3500;
+    return `${pageHeading("КОНКУРЕНТНАЯ БОРЬБА", "Рынок", "Следите за конкурентами, настраивайте комиссию, запускайте рекламу и готовьте экспансию на новые рынки.", `<button class="primary-button" data-action="START_CAMPAIGN" ${state.marketingWeeksLeft > 0 ? "disabled" : ""}>${state.marketingWeeksLeft > 0 ? `Кампания · ${state.marketingWeeksLeft} нед.` : "Реклама · 12 000 ₽"}</button>`)}
+      <section class="panel market-share-panel">
+        <div class="panel-heading"><div><div class="eyebrow">КАРТА РЫНКА</div><h2>${esc(STAGES[state.stage].name)} · ${money(STAGES[state.stage].market * avgOrder(state))} оборот в неделю</h2></div><span class="period-chip">ВАША ДОЛЯ ${state.share.toFixed(1)}%</span></div>
+        <div class="share-bar">${shares.map(item => `<div class="share-segment ${item.you ? "you" : ""}" style="width:${clamp(item.share, 2, 100)}%" title="${esc(item.name)}: ${item.share.toFixed(1)}%"><span>${item.share >= 7 ? esc(item.name) : ""}</span></div>`).join("")}</div>
+        <div class="share-legend">${shares.map(item => `<span><i class="${item.you ? "you" : ""}"></i>${esc(item.name)} — ${item.share.toFixed(1)}%</span>`).join("")}</div>
       </section>
-      <section class="seller-layout">
-        <article class="panel seller-list-panel">
-          <div class="panel-heading"><div><div class="eyebrow">ВАШИ ПАРТНЁРЫ</div><h2>На площадке</h2></div><span class="count-chip">${state.sellers.length} активны</span></div>
-          <div class="seller-list">${state.sellers.map(sellerCard).join("")}</div>
-          ${state.sellers.length >= SELLER_CATALOG.length ? `<div class="all-connected-note">Все продавцы пилотного города уже подключены. Отличная работа!</div>` : `<div class="seller-list-foot"><span>Следующий партнёр подключится за</span><strong>${money(cost)}</strong></div>`}
+
+      <section class="market-grid">
+        <article class="panel commission-panel">
+          <div class="panel-heading"><div><div class="eyebrow">ПРАВИЛА ПЛОЩАДКИ</div><h2>Комиссия продавца</h2></div><span class="commission-badge">${state.commission}%</span></div>
+          <p class="muted-copy">Ваша доля с каждого заказа. Высокая комиссия даёт больше денег сейчас, но отпугивает продавцов и покупателей.</p>
+          <div class="range-wrap"><input type="range" min="8" max="22" step="1" value="${state.commission}" data-action="SET_COMMISSION" aria-label="Комиссия с продавцов"><div class="range-labels"><span>8% · мягко</span><span>22% · смело</span></div></div>
+          <div class="commission-advice">${state.commission >= 15 ? "⚠" : "✦"} ${state.commission >= 17 ? "Высокая ставка: продавцы теряют лояльность каждую неделю." : state.commission >= 15 ? "Смелая ставка: следите за лояльностью продавцов." : "Комфортная ставка для продавцов и покупателей."}</div>
+          <div class="loyalty-row"><div><span>Лояльность продавцов</span><strong>${Math.round(state.sellerLoyalty)}%</strong></div><div class="loyalty-track"><div style="width:${state.sellerLoyalty}%"></div></div></div>
         </article>
-        ${commissionCard(state)}
+
+        <article class="panel logistics-panel">
+          <div class="panel-heading"><div><div class="eyebrow">ЛОГИСТИКА</div><h2>Мощности</h2></div><span class="mini-status"><i></i> ${dailyCapacity(state)} заказов/нед</span></div>
+          <div class="logi-rows">
+            <div class="logi-row"><div><strong>Склад</strong><span>уровень ${state.warehouseLevel} / 8 · ${warehouseCapacity(state)} заказов</span></div><button class="tiny-button" data-action="UPGRADE_WAREHOUSE" ${state.warehouseLevel >= 8 || state.cash < whCost ? "disabled" : ""}>${state.warehouseLevel >= 8 ? "Макс." : money(whCost)}</button></div>
+            <div class="logi-row"><div><strong>Курьеры</strong><span>${state.couriers} чел. · ${courierCapacity(state)} заказов</span></div><button class="tiny-button" data-action="HIRE_COURIER" ${state.couriers >= 14 || state.cash < courierCost ? "disabled" : ""}>${state.couriers >= 14 ? "Макс." : money(courierCost)}</button></div>
+          </div>
+          <div class="marketing-status">${state.marketingWeeksLeft > 0 ? `<span class="live-dot"></span> Рекламная кампания активна ещё ${state.marketingWeeksLeft} нед.` : `Реклама не запущена. Кампания: +30% спроса на 3 недели за 12 000 ₽.`}</div>
+        </article>
       </section>
-      <section class="seller-tip panel"><span class="tip-icon large">✦</span><div><div class="eyebrow">МАЛЕНЬКАЯ ХИТРОСТЬ</div><h3>Честная комиссия помогает расти вместе</h3><p>Высокая ставка увеличит доход с заказа, но продавцы будут терять лояльность. Если она упадёт, прогноз заказов тоже начнёт снижаться.</p></div><div class="tip-arrow">↗</div></section>`;
+
+      ${nextStage ? `<section class="panel expansion-panel">
+        <div class="panel-heading"><div><div class="eyebrow">ЭКСПАНСИЯ</div><h2>Следующий рынок: ${esc(nextStage.name)}</h2></div><span class="period-chip">ОБОРОТ ×${(nextStage.market / STAGES[state.stage].market).toFixed(1)}</span></div>
+        <p class="muted-copy">Чтобы выйти на новый рынок, нужно 15% доли и проект «Экспансия» (4 недели, ${money(nextStage.expandCost === 0 ? 0 : STAGES[state.stage].expandCost)}). Сейчас ваша доля: ${state.share.toFixed(1)}%.</p>
+        <div class="capacity-progress"><div style="width:${clamp(state.share / 15 * 100, 0, 100)}%"></div></div>
+        <div class="capacity-labels"><span>Готовность к экспансии</span><strong>${Math.min(100, Math.round(state.share / 15 * 100))}%</strong></div>
+      </section>` : `<section class="panel expansion-panel"><div class="panel-heading"><div><div class="eyebrow">ФИНАЛ</div><h2>Международный рынок</h2></div></div><p class="muted-copy">Вы возглавляете крупнейший рынок. Развивайте компанию дальше: цели, технологии и рекордные показатели.</p></section>`}`;
   }
 
-  function renderLogistics(state) {
-    const whCapacity = warehouseCapacity(state);
-    const courCapacity = courierCapacity(state);
-    const capacity = dailyCapacity(state);
-    const forecast = forecastOrders(state);
-    const fill = clamp(Math.round(forecast / Math.max(1, capacity) * 100), 4, 100);
-    const whCost = warehouseCost(state);
-    const cCost = courierCost(state);
-    const whMax = state.warehouseLevel >= 6;
-    const cMax = state.couriers >= 10;
-    return `${pageHeading("СКОРОСТЬ И ТОЧНОСТЬ", "Логистика", "Заказ ещё не победа — его нужно собрать и вовремя доставить. Улучшайте склад и нанимайте курьеров, чтобы не терять покупателей.", `<button class="primary-button" data-action="END_DAY">Завершить день <span>→</span></button>`)}
-      <section class="logistics-overview panel">
-        <div class="logistics-copy"><div class="eyebrow">МОЩНОСТЬ СИСТЕМЫ</div><h2>Справимся с сегодняшним спросом?</h2><p>Прогноз — <strong>${forecast} заказов</strong>. Общая пропускная способность ограничена самым узким местом: складом или доставкой.</p>
-          <div class="big-capacity"><strong>${capacity}</strong><span>заказов в день сейчас</span></div>
+  function renderEventModal(state) {
+    if (!state.event) return "";
+    const event = eventById(state.event.id);
+    if (!event) return "";
+    return `<div class="event-layer" role="dialog" aria-modal="true" aria-label="${esc(event.title)}">
+      <div class="event-scrim"></div>
+      <div class="event-card">
+        <div class="event-icon">${event.icon}</div>
+        <div class="eyebrow">СОБЫТИЕ НЕДЕЛИ</div>
+        <h2>${esc(event.title)}</h2>
+        <p class="event-text">${esc(event.text)}</p>
+        <div class="event-choices">${event.choices.map((choice, index) => `
+          <button class="event-choice" data-action="EVENT_CHOICE" data-index="${index}">
+            <strong>${esc(choice.label)}</strong>
+            <span>${esc(choice.hint)}</span>
+          </button>`).join("")}
         </div>
-        <div class="capacity-visual"><div class="capacity-ring" style="--fill:${fill}%"><div><strong>${fill}%</strong><span>ЗАГРУЗКА</span></div></div><div class="ring-caption">${capacity >= forecast ? "Есть запас мощности" : "Нужны улучшения"}</div></div>
-      </section>
-      <section class="logistics-cards">
-        <article class="panel logistics-card">
-          <div class="logi-card-head"><span class="action-icon">▣</span><span class="tiny-tag">УРОВЕНЬ ${state.warehouseLevel} / 6</span></div>
-          <div class="eyebrow">ХРАНЕНИЕ И СБОРКА</div><h2>Склад</h2><p class="muted-copy">Команда собирает товары и готовит посылки к отправке.</p>
-          <div class="capacity-stat"><span>Мощность склада</span><strong>${whCapacity} <small>заказов / день</small></strong></div>
-          <div class="small-progress"><div style="width:${clamp(Math.round(forecast / whCapacity * 100), 3, 100)}%"></div></div>
-          <button class="wide-button" data-action="UPGRADE_WAREHOUSE" ${whMax || state.cash < whCost ? "disabled" : ""}>${whMax ? "Максимальный уровень" : `Улучшить склад · ${money(whCost)}`} <span>→</span></button>
-        </article>
-        <article class="panel logistics-card">
-          <div class="logi-card-head"><span class="action-icon peach">⌁</span><span class="tiny-tag">${state.couriers} В КОМАНДЕ</span></div>
-          <div class="eyebrow">ПОСЛЕДНЯЯ МИЛЯ</div><h2>Курьеры</h2><p class="muted-copy">Курьеры развозят заказы и помогают быстрее расти репутации.</p>
-          <div class="capacity-stat"><span>Мощность доставки</span><strong>${courCapacity} <small>заказов / день</small></strong></div>
-          <div class="small-progress"><div class="peach-fill" style="width:${clamp(Math.round(forecast / courCapacity * 100), 3, 100)}%"></div></div>
-          <button class="wide-button" data-action="HIRE_COURIER" ${cMax || state.cash < cCost ? "disabled" : ""}>${cMax ? "Команда укомплектована" : `Нанять курьера · ${money(cCost)}`} <span>→</span></button>
-        </article>
-      </section>
-      <section class="panel ops-panel"><div class="panel-heading"><div><div class="eyebrow">ЦЕПОЧКА ЗАКАЗА</div><h2>Как работает доставка</h2></div><span class="mini-status"><i></i> ${capacity >= forecast ? "Всё готово" : "Есть узкое место"}</span></div><div class="flow-steps"><div class="flow-step"><span>01</span><div class="flow-icon">▧</div><strong>Заказ</strong><small>Покупатель оформляет товар</small></div><i class="flow-line"></i><div class="flow-step"><span>02</span><div class="flow-icon">▣</div><strong>Сборка</strong><small>Склад готовит посылку</small></div><i class="flow-line"></i><div class="flow-step"><span>03</span><div class="flow-icon peach">⌁</div><strong>Доставка</strong><small>Курьер везёт заказ</small></div><i class="flow-line"></i><div class="flow-step"><span>04</span><div class="flow-icon lime">✦</div><strong>Отзыв</strong><small>Репутация растёт</small></div></div></section>`;
-  }
-
-  function renderMarketing(state) {
-    const campaignCost = 950;
-    const forecast = forecastOrders(state);
-    return `${pageHeading("РАСТИМ АУДИТОРИЮ", "Маркетинг", "Привлекайте покупателей и превращайте первый заказ в привычку. Кампания длится три игровых дня.", `<button class="primary-button" data-action="RUN_ADS" ${state.adDays > 0 || state.cash < campaignCost ? "disabled" : ""}>${state.adDays > 0 ? `Активна · ${state.adDays} дн.` : `Запустить · ${money(campaignCost)}`}</button>`)}
-      <section class="marketing-hero panel">
-        <div class="marketing-copy"><div class="hero-pill light-pill"><span class="pulse"></span> ${state.adDays > 0 ? `КАМПАНИЯ АКТИВНА · ${state.adDays} ДН.` : "КАМПАНИЯ ГОТОВА К ЗАПУСКУ"}</div><h2>Пусть о вас<br>узнает весь город.</h2><p>Реклама приводит покупателей на площадку. В течение трёх дней прогноз заказов вырастет примерно на треть.</p><div class="marketing-result"><span>Текущий прогноз</span><strong>${forecast} <small>заказов / день</small></strong></div></div>
-        <div class="megaphone-art" aria-hidden="true"><div class="mega-spark spark-a">✦</div><div class="mega-spark spark-b">✧</div><div class="mega-cone"></div><div class="mega-handle"></div><div class="mega-mouth"></div><div class="mega-wave wave-one"></div><div class="mega-wave wave-two"></div><div class="mega-wave wave-three"></div><div class="mega-base"></div></div>
-      </section>
-      <section class="marketing-grid">
-        <article class="panel campaign-panel"><div class="panel-heading"><div><div class="eyebrow">ПРОДВИЖЕНИЕ</div><h2>Городская кампания</h2></div><span class="campaign-price">${money(campaignCost)}</span></div><p class="muted-copy">Показывайте площадку новым покупателям. За кампанию списывается фиксированная сумма, а дополнительный спрос продержится три дня.</p><div class="campaign-benefits"><div><span class="benefit-check">✓</span><span>Примерно +32% к прогнозу заказов</span></div><div><span class="benefit-check">✓</span><span>Новые покупатели узнают о площадке</span></div><div><span class="benefit-check">✓</span><span>Репутация растёт за успешную доставку</span></div></div><button class="wide-button" data-action="RUN_ADS" ${state.adDays > 0 || state.cash < campaignCost ? "disabled" : ""}>${state.adDays > 0 ? `Кампания идёт · осталось ${state.adDays} дн.` : `Запустить кампанию · ${money(campaignCost)}`} <span>→</span></button></article>
-        <article class="panel reputation-panel"><div class="panel-heading"><div><div class="eyebrow">ДОВЕРИЕ ПОКУПАТЕЛЕЙ</div><h2>Репутация</h2></div><span class="reputation-icon">✦</span></div><div class="rep-score">${state.reputation}<span>/ 100</span></div><div class="rep-progress"><div style="width:${state.reputation}%"></div></div><p>${state.reputation >= 80 ? "Отличная работа — покупатели рекомендуют площадку друзьям." : state.reputation >= 60 ? "Хороший старт. Своевременная доставка поможет поднять рейтинг." : "Рейтинг просел. Проверьте, хватает ли мощностей склада и курьеров."}</p><div class="rep-foot"><span>Всего доставлено</span><strong>${number(state.totalOrders)} заказов</strong></div></article>
-      </section>
-      <section class="marketing-note"><span>✦</span><p><strong>Совет:</strong> не запускайте рекламу, если логистика уже загружена почти на 100% — невыполненные заказы могут снизить репутацию.</p></section>`;
-  }
-
-  function sortedStoreProducts(state) {
-    const products = [...STORE_PRODUCTS];
-    if (state.storeSort === "priceAsc") return products.sort((a, b) => a.price - b.price);
-    if (state.storeSort === "priceDesc") return products.sort((a, b) => b.price - a.price);
-    return products.sort((a, b) => b.reviews - a.reviews);
-  }
-
-  function renderStoreProduct(product, state) {
-    const isFavorite = (state.favorites || []).includes(product.id);
-    const query = String(state.storeQuery || "").trim().toLowerCase();
-    const searchText = `${product.name} ${product.category} ${product.seller} ${product.features} ${product.keywords}`.toLowerCase();
-    const matches = (state.storeCategory === "all" || state.storeCategory === product.categoryId) && (!query || searchText.includes(query));
-    const discount = Math.round((1 - product.price / product.oldPrice) * 100);
-    return `<article class="store-product-card" data-category="${product.categoryId}" data-search="${esc(searchText)}" ${matches ? "" : "hidden"}>
-      <div class="product-photo" style="--photo-bg:${product.id === "headphones" ? "#ece8ff" : product.id === "sneakers" ? "#f7f0e3" : "#edf4e9"}">
-        <span class="product-badge">${esc(product.badge)}</span>
-        <button class="favorite-button ${isFavorite ? "is-favorite" : ""}" data-action="TOGGLE_FAVORITE" data-product="${product.id}" aria-label="${isFavorite ? "Убрать из избранного" : "Добавить в избранное"}">${isFavorite ? "♥" : "♡"}</button>
-        <img src="${esc(productImageSource(product.image))}" alt="${esc(product.name)}" loading="lazy">
-        <span class="discount-sticker">−${discount}%</span>
       </div>
-      <div class="product-info">
-        <div class="product-seller"><span class="seller-check">✓</span>${esc(product.seller)}</div>
-        <h3>${esc(product.name)}</h3>
-        <p class="product-features">${esc(product.features)}</p>
-        <div class="product-rating"><span class="rating-stars">★</span><strong>${product.rating}</strong><span>(${number(product.reviews)})</span><i></i><span class="delivery-label">${esc(product.delivery)}</span></div>
-        <div class="product-price-row"><strong>${money(product.price)}</strong><del>${money(product.oldPrice)}</del></div>
-        <button class="add-cart-button" data-action="CART_ADD" data-product="${product.id}"><span>В корзину</span><span class="add-cart-plus">＋</span></button>
-      </div>
-    </article>`;
-  }
-
-  function renderCartDrawer(state) {
-    if (!state.cartOpen) return "";
-    const items = (state.cartItems || []).map(item => ({ ...item, product: storeProduct(item.id) })).filter(item => item.product);
-    const count = cartCount(state);
-    return `<div class="cart-layer">
-      <button class="cart-scrim" data-action="CART_CLOSE" aria-label="Закрыть корзину"></button>
-      <aside class="cart-drawer" role="dialog" aria-modal="true" aria-label="Корзина">
-        <div class="cart-drawer-head"><div><span class="drawer-kicker">ВАША ПОКУПКА</span><h2>Корзина <span>${count}</span></h2></div><button class="drawer-close" data-action="CART_CLOSE" aria-label="Закрыть">×</button></div>
-        ${items.length ? `<div class="cart-items">${items.map(item => `<article class="cart-item"><img src="${esc(productImageSource(item.product.image))}" alt=""><div class="cart-item-copy"><strong>${esc(item.product.name)}</strong><span>${money(item.product.price)} · ${esc(item.product.delivery)}</span><div class="cart-qty"><button data-action="CART_REMOVE" data-product="${item.id}" aria-label="Уменьшить количество">−</button><span>${item.qty}</span><button data-action="CART_ADD" data-product="${item.id}" aria-label="Добавить ещё">＋</button></div></div><b>${money(item.product.price * item.qty)}</b></article>`).join("")}</div>
-          <div class="cart-summary"><div><span>Итого</span><strong>${money(cartTotal(state))}</strong></div><p>Демо-заказы попадут в симуляцию следующего игрового дня.</p><button class="checkout-button" data-action="CART_CHECKOUT">Оформить демо-заказ <span>→</span></button></div>`
-          : `<div class="cart-empty"><div class="empty-cart-icon">🛍</div><h3>Корзина ждёт покупок</h3><p>Добавьте товар с витрины — и оформите тестовый заказ для своей платформы.</p><button data-action="CART_CLOSE">Продолжить покупки</button></div>`}
-      </aside>
-    </div>`;
-  }
-
-  function renderStorefront(state) {
-    const categories = [
-      { id: "all", name: "Всё самое нужное", short: "Все товары", icon: "✦", tone: "all" },
-      { id: "electronics", name: "Техника и звук", short: "Электроника", icon: "♫", tone: "violet" },
-      { id: "home", name: "Дом с настроением", short: "Дом и уют", icon: "⌂", tone: "mint" },
-      { id: "clothes", name: "На каждый день", short: "Одежда и обувь", icon: "◒", tone: "peach" }
-    ];
-    const query = String(state.storeQuery || "").trim().toLowerCase();
-    const matches = STORE_PRODUCTS.filter(product => {
-      const text = `${product.name} ${product.category} ${product.seller} ${product.features} ${product.keywords}`.toLowerCase();
-      return (state.storeCategory === "all" || state.storeCategory === product.categoryId) && (!query || text.includes(query));
-    }).length;
-    const cartItems = cartCount(state);
-    const pendingOrders = state.pendingOrders || 0;
-    return `<div class="marketplace-app">
-      <div class="market-topline"><div class="market-wrap topline-inner"><div class="topline-location"><span class="location-pin">⌖</span><span>Доставим в</span><button>Челябинск <span>⌄</span></button><i></i><span class="delivery-promise">Бесплатная доставка от 2 500 ₽</span></div><div class="topline-tools"><span class="pilot-indicator"><i></i> ПИЛОТНЫЙ ЗАПУСК</span><button data-action="OPEN_TAB" title="Открыть в отдельной вкладке">↗ <span>Отдельная вкладка</span></button><button data-action="TOGGLE_FULLSCREEN" title="На весь экран">⛶ <span>На весь экран</span></button></div></div></div>
-      <header class="market-header"><div class="market-wrap market-header-inner">
-        <button class="market-brand" data-action="NAV" data-view="store" aria-label="На главную">
-          <span class="market-brand-mark"><i></i><i></i><i></i></span><span class="market-brand-copy"><strong>своймаркет</strong><small>ПОКУПКИ РЯДОМ</small></span>
-        </button>
-        <button class="catalog-button" data-action="STORE_CATEGORY" data-category="all"><span>☰</span> Каталог</button>
-        <label class="market-search"><span class="search-symbol">⌕</span><input type="search" data-action="STORE_SEARCH" value="${esc(state.storeQuery || "")}" placeholder="Найти на «Свой Маркет»" autocomplete="off"><span class="search-shortcut">НАЙТИ</span></label>
-        <div class="market-header-actions">
-          <button class="market-action" data-action="NAV" data-view="overview"><span class="market-action-icon">♙</span><span>Кабинет</span></button>
-          <button class="market-action cart-action" data-action="CART_OPEN"><span class="cart-icon-wrap">🛍<b>${cartItems}</b></span><span>Корзина</span></button>
-        </div>
-      </div></header>
-      <nav class="market-subnav"><div class="market-wrap subnav-inner"><div class="subnav-links"><button class="subnav-link ${state.storeCategory === "all" ? "active" : ""}" data-action="STORE_CATEGORY" data-category="all">Главная</button><button class="subnav-link ${state.storeCategory === "electronics" ? "active" : ""}" data-action="STORE_CATEGORY" data-category="electronics">Техника</button><button class="subnav-link ${state.storeCategory === "home" ? "active" : ""}" data-action="STORE_CATEGORY" data-category="home">Дом и уют</button><button class="subnav-link ${state.storeCategory === "clothes" ? "active" : ""}" data-action="STORE_CATEGORY" data-category="clothes">Одежда и обувь</button><span class="subnav-divider"></span><span class="subnav-hot">✦ Выбор города</span></div><button class="owner-link" data-action="NAV" data-view="overview"><span class="owner-link-icon">↗</span> Управлять маркетплейсом</button></div></nav>
-      <main class="market-main market-wrap">
-        ${state.notice ? `<div class="market-toast" role="status"><span>✦</span><p>${esc(state.notice)}</p><button data-action="CLEAR_NOTICE" aria-label="Закрыть">×</button></div>` : ""}
-        <section class="market-hero">
-          <div class="hero-copy-market"><div class="market-eyebrow"><span class="eyebrow-star">✦</span> ПЕРВАЯ НЕДЕЛЯ БОЛЬШИХ НАХОДОК</div><h1>Всё нужное.<br><em>По-своему.</em></h1><p>Открывайте локальные бренды, находите любимые вещи и получайте их уже завтра.</p><a class="market-hero-button" href="#store-products">Смотреть подборку <span>→</span></a><div class="hero-proof"><span><b>✓</b> Проверенные продавцы</span><i></i><span><b>✓</b> Доставка рядом</span></div></div>
-          <div class="market-hero-art"><div class="hero-orb orb-a"></div><div class="hero-orb orb-b"></div><div class="hero-ring"></div><div class="hero-product-shadow"></div><img src="${esc(productImageSource("headphones.jpg"))}" alt="Наушники Cloud Lite" class="hero-product-image"><div class="hero-floating-card"><span class="floating-card-badge">ХИТ НЕДЕЛИ</span><strong>Наушники<br>Cloud Lite</strong><div><span>−33%</span><b>${money(3990)}</b></div></div><div class="hero-sale-bubble"><span>ДО</span><strong>−40%</strong><small>НА ХИТЫ</small></div><span class="hero-star star-one">✦</span><span class="hero-star star-two">✧</span></div>
-          <div class="hero-slide-dots"><i class="active"></i><i></i><i></i></div>
-        </section>
-
-        <section class="trust-row"><div class="trust-item"><span class="trust-icon violet">⌖</span><span><strong>Рядом с вами</strong><small>продавцы своего города</small></span></div><div class="trust-item"><span class="trust-icon mint">↗</span><span><strong>Доставка без суеты</strong><small>понятные сроки и статусы</small></span></div><div class="trust-item"><span class="trust-icon peach">♡</span><span><strong>Выбор покупателей</strong><small>честные оценки и отзывы</small></span></div><div class="trust-status"><span class="live-dot"></span> Сегодня на площадке <strong>${number(forecastOrders(state) - pendingOrders)} заказов</strong>${pendingOrders ? `<small>+${pendingOrders} в очереди на завтра</small>` : ""}</div></section>
-
-        <section class="market-section category-section"><div class="market-section-heading"><div><span class="market-kicker">БЫСТРО НАЙДЁМ</span><h2>Что ищем сегодня?</h2></div><button class="text-link" data-action="STORE_CATEGORY" data-category="all">Весь каталог <span>→</span></button></div><div class="category-card-grid">${categories.map(category => `<button class="category-tile ${category.tone} ${state.storeCategory === category.id ? "selected" : ""}" data-action="STORE_CATEGORY" data-category="${category.id}"><span class="category-tile-icon">${category.icon}</span><span class="category-tile-copy"><strong>${category.name}</strong><small>${category.short}</small></span><span class="category-tile-arrow">↗</span></button>`).join("")}</div></section>
-
-        <section class="market-section products-section" id="store-products"><div class="market-section-heading products-heading"><div><span class="market-kicker">ВЫБРАЛИ ДЛЯ ВАС</span><h2>Находки дня <span class="heading-spark">✦</span></h2></div><div class="products-heading-right"><span class="results-count" data-store-results>${matches} товара</span><label class="sort-select-wrap"><select class="sort-select" data-action="STORE_SORT" aria-label="Сортировка товаров"><option value="popular" ${state.storeSort === "popular" ? "selected" : ""}>Сначала популярное</option><option value="priceAsc" ${state.storeSort === "priceAsc" ? "selected" : ""}>Сначала дешевле</option><option value="priceDesc" ${state.storeSort === "priceDesc" ? "selected" : ""}>Сначала дороже</option></select></label></div></div><div class="active-filter-row"><div class="filter-chips">${categories.map(category => `<button class="filter-chip ${state.storeCategory === category.id ? "active" : ""}" data-action="STORE_CATEGORY" data-category="${category.id}">${category.short}</button>`).join("")}</div><span class="catalog-note">ПИЛОТНЫЙ КАТАЛОГ · ${STORE_PRODUCTS.length} ТОВАРА</span></div><div class="store-product-grid">${sortedStoreProducts(state).map(product => renderStoreProduct(product, state)).join("")}</div><div class="store-empty" ${matches ? "hidden" : ""}><span>⌕</span><strong>Ничего не нашли</strong><p>Попробуйте изменить запрос или выбрать другую категорию.</p><button data-action="STORE_CATEGORY" data-category="all">Показать все товары</button></div></section>
-
-        <section class="owner-banner"><div class="owner-banner-copy"><span class="owner-banner-kicker"><i></i> ТВОЯ ПЛАТФОРМА · ДЕНЬ ${String(state.day).padStart(2, "0")}</span><h2>Хочешь управлять<br>всем этим?</h2><p>Подключай продавцов, запускай акции и строй маркетплейс, который любят покупатели.</p><button data-action="NAV" data-view="overview">Открыть кабинет владельца <span>→</span></button></div><div class="owner-banner-stats"><div><span>Репутация</span><strong>4,${Math.floor(state.reputation / 10)} <small>★</small></strong></div><div><span>Продавцов</span><strong>${state.sellers.length}</strong></div><div><span>Баланс платформы</span><strong>${money(state.cash)}</strong></div></div><div class="owner-banner-art"><span class="banner-circle circle-a"></span><span class="banner-circle circle-b"></span><span class="banner-mark">✦</span><span class="banner-label">СВОЯ<br>ПЛАТФОРМА</span></div></section>
-      </main>
-      <footer class="market-footer"><div class="market-wrap footer-inner"><span class="footer-brand">своймаркет <small>ПОКУПКИ РЯДОМ</small></span><span>Демо-витрина tycoon-игры · все товары вымышлены</span><button data-action="NAV" data-view="overview">Кабинет владельца ↗</button></div></footer>
-      ${renderCartDrawer(state)}
     </div>`;
   }
 
   function render(state) {
-    if (state.activeView === "store") return renderStorefront(state);
     let content;
     switch (state.activeView) {
-      case "sellers": content = renderSellers(state); break;
-      case "logistics": content = renderLogistics(state); break;
-      case "marketing": content = renderMarketing(state); break;
+      case "team": content = renderTeam(state); break;
+      case "research": content = renderResearch(state); break;
+      case "projects": content = renderProjects(state); break;
+      case "market": content = renderMarket(state); break;
       default: content = renderOverview(state);
     }
-    return renderShell(state, content);
+    return renderShell(state, content) + renderEventModal(state);
   }
 
   window.MarketTycoon = { initialState, reducer, render };
