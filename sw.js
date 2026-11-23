@@ -1,27 +1,34 @@
-const CACHE_NAME = "svoi-market-pwa-v3";
-const APP_FILES = [
-  "",
-  "index.html",
-  "styles.css",
-  "engine.js",
-  "game.js",
-  "main.js",
-  "manifest.webmanifest",
-  "assets/icons/icon-192.png",
-  "assets/icons/icon-512.png",
-  "assets/icons/apple-touch-icon.png",
-  "assets/icons/favicon-32.png"
-];
+/*
+ * Service Worker «Свой Маркет» — v4.
+ * Стратегия: сеть в приоритете (онлайн — всегда свежие файлы),
+ * кэш — запасной вариант для офлайна. Старые версии кэша удаляются.
+ */
+const CACHE_NAME = "svoi-market-pwa-v4";
 
-const appUrl = path => new URL(path, self.registration.scope).href;
-const appShell = APP_FILES.map(appUrl);
+async function networkFirst(request) {
+  const cache = await caches.open(CACHE_NAME);
+  try {
+    const response = await fetch(request);
+    if (response.ok) {
+      await cache.put(request, response.clone());
+    }
+    return response;
+  } catch (error) {
+    const cached = await cache.match(request, { ignoreSearch: true })
+      || await cache.match(new URL("index.html", self.registration.scope).href);
+    return cached || Response.error();
+  }
+}
 
 self.addEventListener("install", event => {
-  event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(cache => cache.addAll(appShell))
-      .then(() => self.skipWaiting())
-  );
+  event.waitUntil((async () => {
+    const cache = await caches.open(CACHE_NAME);
+    await cache.addAll([
+      new URL("index.html", self.registration.scope).href,
+      new URL("manifest.webmanifest", self.registration.scope).href
+    ]);
+    await self.skipWaiting();
+  })());
 });
 
 self.addEventListener("activate", event => {
@@ -37,41 +44,11 @@ self.addEventListener("activate", event => {
 self.addEventListener("fetch", event => {
   const request = event.request;
   if (request.method !== "GET") return;
+  if (new URL(request.url).origin !== self.location.origin) return;
+  event.respondWith(networkFirst(request));
+});
 
-  const requestUrl = new URL(request.url);
-  if (requestUrl.origin !== self.location.origin) return;
-
-  if (request.mode === "navigate") {
-    event.respondWith((async () => {
-      const cache = await caches.open(CACHE_NAME);
-      try {
-        const response = await fetch(request);
-        if (response.ok) {
-          await cache.put(request, response.clone());
-        }
-        return response;
-      } catch (error) {
-        return await cache.match(request, { ignoreSearch: true })
-          || await cache.match(appUrl("index.html"))
-          || Response.error();
-      }
-    })());
-    return;
-  }
-
-  event.respondWith((async () => {
-    const cache = await caches.open(CACHE_NAME);
-    const cached = await cache.match(request, { ignoreSearch: true });
-    if (cached) return cached;
-
-    try {
-      const response = await fetch(request);
-      if (response.ok && response.type === "basic") {
-        await cache.put(request, response.clone());
-      }
-      return response;
-    } catch (error) {
-      return Response.error();
-    }
-  })());
+// Позволяет странице принудительно проверять обновления.
+self.addEventListener("message", event => {
+  if (event.data === "SKIP_WAITING") self.skipWaiting();
 });
