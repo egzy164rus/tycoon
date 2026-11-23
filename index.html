@@ -1,221 +1,23 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Tycoon — строй свою империю</title>
-  <style>
-    :root {
-      --bg: #0f1220;
-      --bg-soft: #171c30;
-      --card: #1e2440;
-      --gold: #ffc94d;
-      --gold-deep: #e8a91c;
-      --text: #eef1ff;
-      --muted: #9aa3c7;
-      --accent: #5b8cff;
-    }
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: "Segoe UI", Roboto, Arial, sans-serif;
-      background: radial-gradient(1200px 600px at 70% -10%, #232b52 0%, var(--bg) 55%);
-      color: var(--text);
-      min-height: 100vh;
-      overflow-x: hidden;
-    }
-    .wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
-
-    header {
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 22px 0;
-    }
-    .logo {
-      display: flex; align-items: center; gap: 12px;
-      font-weight: 800; font-size: 20px; letter-spacing: 2px;
-    }
-    .logo .coin { width: 34px; height: 34px; }
-    .badge {
-      background: var(--card); color: var(--muted);
-      border: 1px solid #2c3560; border-radius: 999px;
-      padding: 8px 16px; font-size: 13px;
-    }
-    .badge b { color: var(--gold); }
-
-    .hero {
-      text-align: center; padding: 70px 0 40px;
-      position: relative;
-    }
-    .hero h1 {
-      font-size: clamp(52px, 10vw, 110px);
-      letter-spacing: 6px; line-height: 1;
-      background: linear-gradient(180deg, #fff 20%, var(--gold) 80%);
-      -webkit-background-clip: text; background-clip: text;
-      -webkit-text-fill-color: transparent;
-      text-shadow: 0 12px 40px rgba(255, 201, 77, 0.18);
-    }
-    .hero p {
-      margin: 22px auto 0; max-width: 560px;
-      font-size: 19px; line-height: 1.6; color: var(--muted);
-    }
-    .cta { margin-top: 34px; display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
-    .btn {
-      display: inline-flex; align-items: center; gap: 10px;
-      padding: 15px 28px; border-radius: 14px;
-      font-size: 16px; font-weight: 700; text-decoration: none;
-      transition: transform .15s ease, box-shadow .15s ease;
-    }
-    .btn:hover { transform: translateY(-2px); }
-    .btn-gold {
-      background: linear-gradient(180deg, var(--gold), var(--gold-deep));
-      color: #2a1d00;
-      box-shadow: 0 10px 28px rgba(255, 201, 77, 0.35);
-    }
-    .btn-ghost {
-      background: var(--card); color: var(--text);
-      border: 1px solid #33406f;
-    }
-
-    .skyline {
-      margin-top: 20px; width: 100%; height: auto; display: block;
-      opacity: .95;
-    }
-
-    .features {
-      display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-      gap: 18px; padding: 46px 0 20px;
-    }
-    .card {
-      background: linear-gradient(180deg, var(--card), var(--bg-soft));
-      border: 1px solid #2c3560; border-radius: 18px;
-      padding: 26px 24px;
-    }
-    .card .icon {
-      width: 46px; height: 46px; border-radius: 12px;
-      display: flex; align-items: center; justify-content: center;
-      background: rgba(255, 201, 77, 0.12); margin-bottom: 16px;
-    }
-    .card h3 { font-size: 18px; margin-bottom: 10px; }
-    .card p { color: var(--muted); font-size: 14.5px; line-height: 1.65; }
-
-    .progress-wrap { padding: 30px 0 10px; }
-    .progress-title {
-      display: flex; justify-content: space-between; align-items: baseline;
-      margin-bottom: 12px;
-    }
-    .progress-title h2 { font-size: 20px; }
-    .progress-title span { color: var(--muted); font-size: 13px; }
-    .progress {
-      height: 12px; border-radius: 999px; background: var(--card);
-      border: 1px solid #2c3560; overflow: hidden;
-    }
-    .progress i {
-      display: block; height: 100%; width: 18%;
-      background: linear-gradient(90deg, var(--gold-deep), var(--gold));
-      border-radius: 999px;
-    }
-
-    footer {
-      margin-top: 60px; padding: 28px 0 40px;
-      border-top: 1px solid #262e54;
-      display: flex; justify-content: space-between; align-items: center;
-      flex-wrap: wrap; gap: 14px;
-      color: var(--muted); font-size: 14px;
-    }
-    footer a { color: var(--gold); text-decoration: none; }
-    footer a:hover { text-decoration: underline; }
-  </style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#33267d">
+  <meta name="description" content="Свой Маркет — игра-симулятор: управляйте маркетплейсом и открывайте витрину местных товаров.">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Свой Маркет">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32.png">
+  <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
+  <title>Свой Маркет — симулятор маркетплейса</title>
+  <link rel="stylesheet" href="styles.css">
+  <script defer src="engine.js"></script>
+  <script defer src="game.js"></script>
+  <script defer src="main.js"></script>
 </head>
 <body>
-  <div class="wrap">
-    <header>
-      <div class="logo">
-        <svg class="coin" viewBox="0 0 64 64" aria-hidden="true">
-          <circle cx="32" cy="32" r="28" fill="#ffc94d"/>
-          <circle cx="32" cy="32" r="21" fill="#e8a91c"/>
-          <text x="32" y="41" text-anchor="middle" font-size="24" font-weight="800" fill="#7a5200" font-family="Arial">$</text>
-        </svg>
-        TYCOON
-      </div>
-      <div class="badge">Статус: <b>в разработке</b></div>
-    </header>
-
-    <section class="hero">
-      <h1>TYCOON</h1>
-      <p>Начни с маленькой лавки и построй огромную империю. Зарабатывай, инвестируй, расти — и стань самым богатым магнатом города.</p>
-      <div class="cta">
-        <a class="btn btn-gold" href="https://github.com/egzy164rus/tycoon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="#2a1d00" aria-hidden="true"><path d="M12 .5C5.7.5.5 5.7.5 12c0 5.1 3.3 9.4 7.9 10.9.6.1.8-.2.8-.6v-2c-3.2.7-3.9-1.5-3.9-1.5-.5-1.3-1.3-1.7-1.3-1.7-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.7 1.3 3.4 1 .1-.8.4-1.3.8-1.6-2.6-.3-5.3-1.3-5.3-5.7 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.5.1-3.1 0 0 1-.3 3.2 1.2.9-.3 1.9-.4 2.9-.4s2 .1 2.9.4c2.2-1.5 3.2-1.2 3.2-1.2.6 1.6.2 2.8.1 3.1.8.8 1.2 1.8 1.2 3.1 0 4.4-2.7 5.4-5.3 5.7.4.4.8 1.1.8 2.2v3.2c0 .4.2.7.8.6 4.6-1.5 7.9-5.8 7.9-10.9C23.5 5.7 18.3.5 12 .5z"/></svg>
-          Репозиторий на GitHub
-        </a>
-        <a class="btn btn-ghost" href="#features">Подробнее об игре</a>
-      </div>
-    </section>
-
-    <svg class="skyline" viewBox="0 0 1080 220" aria-hidden="true">
-      <defs>
-        <linearGradient id="b1" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stop-color="#2b3564"/><stop offset="1" stop-color="#1a2040"/>
-        </linearGradient>
-        <linearGradient id="b2" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stop-color="#39457c"/><stop offset="1" stop-color="#222a52"/>
-        </linearGradient>
-      </defs>
-      <rect x="60"  y="90"  width="110" height="130" rx="6" fill="url(#b1)"/>
-      <rect x="190" y="50"  width="90"  height="170" rx="6" fill="url(#b2)"/>
-      <rect x="300" y="110" width="130" height="110" rx="6" fill="url(#b1)"/>
-      <rect x="450" y="30"  width="100" height="190" rx="6" fill="url(#b2)"/>
-      <rect x="570" y="80"  width="140" height="140" rx="6" fill="url(#b1)"/>
-      <rect x="730" y="55"  width="95"  height="165" rx="6" fill="url(#b2)"/>
-      <rect x="845" y="100" width="120" height="120" rx="6" fill="url(#b1)"/>
-      <rect x="985" y="70"  width="75"  height="150" rx="6" fill="url(#b2)"/>
-      <g fill="#ffc94d" opacity="0.85">
-        <rect x="215" y="75"  width="14" height="10" rx="2"/><rect x="245" y="75"  width="14" height="10" rx="2"/>
-        <rect x="215" y="105" width="14" height="10" rx="2"/><rect x="245" y="135" width="14" height="10" rx="2"/>
-        <rect x="475" y="55"  width="14" height="10" rx="2"/><rect x="505" y="85"  width="14" height="10" rx="2"/>
-        <rect x="475" y="115" width="14" height="10" rx="2"/><rect x="505" y="145" width="14" height="10" rx="2"/>
-        <rect x="755" y="80"  width="14" height="10" rx="2"/><rect x="785" y="110" width="14" height="10" rx="2"/>
-        <rect x="1005" y="95" width="14" height="10" rx="2"/><rect x="1005" y="125" width="14" height="10" rx="2"/>
-      </g>
-    </svg>
-
-    <section class="features" id="features">
-      <div class="card">
-        <div class="icon">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ffc94d" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v10M9 9.5h4.2a1.8 1.8 0 010 3.6H9m0 0h4.5"/></svg>
-        </div>
-        <h3>Экономика</h3>
-        <p>Управляй доходами и расходами, находи баланс между риском и прибылью, следи за рынком и зарабатывай первые миллионы.</p>
-      </div>
-      <div class="card">
-        <div class="icon">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ffc94d" stroke-width="2"><path d="M4 20V10M10 20V4M16 20v-8M22 20H2"/></svg>
-        </div>
-        <h3>Прокачка</h3>
-        <p>Улучшай бизнесы, открывай новые здания и технологии. Каждый уровень приносит больше прибыли и новых возможностей.</p>
-      </div>
-      <div class="card">
-        <div class="icon">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ffc94d" stroke-width="2"><path d="M12 2l2.9 6.2 6.6.9-4.8 4.6 1.2 6.6L12 17.2 6.1 20.3l1.2-6.6L2.5 9.1l6.6-.9L12 2z"/></svg>
-        </div>
-        <h3>Империя</h3>
-        <p>Строй город своей мечты: от маленькой лавки до огромного холдинга. Соревнуйся с друзьями за звание лучшего тайкуна.</p>
-      </div>
-    </section>
-
-    <section class="progress-wrap">
-      <div class="progress-title">
-        <h2>Прогресс разработки</h2>
-        <span>обновляется по мере развития проекта</span>
-      </div>
-      <div class="progress"><i></i></div>
-    </section>
-
-    <footer>
-      <div>© 2026 Tycoon · сделано с 🎮 и большим количеством кофе</div>
-      <div>
-        <a href="https://github.com/egzy164rus/tycoon">github.com/egzy164rus/tycoon</a>
-      </div>
-    </footer>
-  </div>
+  <div id="app" aria-live="polite"></div>
 </body>
 </html>
