@@ -1419,6 +1419,71 @@ button:focus-visible, input:focus-visible {
 .metrics-grid { gap: 12px; margin-bottom: 18px; }
 .metric-card { padding: 15px 16px 12px; }
 
+/* ============ Что делать / План победы / Подписи навигации ============ */
+
+.nav-label { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.25; text-align: left; }
+.nav-sub { font-size: 9.5px; color: rgba(255, 255, 255, 0.5); font-weight: 600; letter-spacing: 0.2px; }
+.nav-link.active .nav-sub { color: rgba(255, 255, 255, 0.78); }
+
+.todo-card {
+  background: linear-gradient(150deg, rgba(124, 92, 255, 0.12), var(--card) 55%);
+  border: 1px solid rgba(124, 92, 255, 0.32); border-radius: 22px; padding: 22px 26px;
+}
+.todo-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; margin-bottom: 13px; }
+.todo-head h2 { font-size: 18px; }
+.todo-progress {
+  flex-shrink: 0; font-size: 11px; font-weight: 800; letter-spacing: 0.6px;
+  background: rgba(124, 92, 255, 0.15); color: var(--brand);
+  padding: 8px 13px; border-radius: 999px;
+}
+.todo-list { display: flex; flex-direction: column; gap: 9px; }
+.todo-row {
+  display: flex; align-items: center; gap: 13px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 11px 15px;
+}
+.todo-row.next {
+  border-color: rgba(255, 201, 77, 0.65);
+  box-shadow: 0 10px 28px rgba(255, 157, 77, 0.18);
+  background: linear-gradient(135deg, rgba(255, 201, 77, 0.12), var(--card) 60%);
+}
+.todo-row.done { opacity: 0.62; }
+.todo-num {
+  width: 30px; height: 30px; border-radius: 10px; flex-shrink: 0;
+  background: rgba(124, 92, 255, 0.14); color: var(--brand);
+  display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800;
+}
+.todo-row.next .todo-num { background: linear-gradient(135deg, var(--gold), var(--gold-2)); color: #4a2c00; }
+.todo-row.done .todo-num { background: rgba(46, 204, 143, 0.18); color: var(--green); }
+.todo-info { flex: 1; min-width: 0; }
+.todo-info strong { display: block; font-size: 13px; }
+.todo-info span { font-size: 11px; color: var(--muted); }
+.todo-done-label { font-size: 10px; font-weight: 800; color: var(--green); letter-spacing: 0.6px; flex-shrink: 0; }
+.todo-cta {
+  flex-shrink: 0; background: var(--brand); color: #fff; border: 0; border-radius: 11px;
+  padding: 10px 16px; font-size: 11.5px; font-weight: 800; cursor: pointer;
+  transition: all 0.2s var(--ease-out); white-space: nowrap;
+}
+.todo-row.next .todo-cta {
+  background: linear-gradient(135deg, var(--gold), var(--gold-2)); color: #4a2c00;
+  box-shadow: 0 10px 22px rgba(255, 157, 77, 0.35);
+}
+.todo-cta:hover { transform: translateY(-1px); filter: brightness(1.06); }
+.todo-foot { margin-top: 12px; font-size: 11.5px; color: var(--muted); }
+
+.victory-path {
+  background: var(--card); border: 1px solid var(--line); border-radius: 22px; padding: 20px 26px 22px;
+}
+.path-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; margin-bottom: 13px; }
+.path-head h2 { font-size: 18px; }
+.path-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 13px; }
+.path-card { background: var(--bg); border: 1px solid var(--line); border-radius: 15px; padding: 14px 16px; }
+.path-title { display: flex; align-items: center; gap: 8px; }
+.path-icon { font-size: 18px; }
+.path-title strong { font-size: 12.5px; }
+.path-value { font-size: 15px; font-weight: 800; letter-spacing: -0.3px; margin: 8px 0 7px; }
+.path-fill { background: linear-gradient(90deg, var(--gold), var(--gold-2)) !important; }
+.path-sub { font-size: 10px; color: var(--muted); margin-top: 7px; }
+
 /* ============ Адаптивность ============ */
 
 @media (max-width: 1080px) {
@@ -1469,4 +1534,14 @@ button:focus-visible, input:focus-visible {
   .goal-progress-wrap { width: 82px; }
   .goal-row { gap: 9px; padding: 9px 11px; }
   .goal-reward { font-size: 9.5px; }
+}
+
+@media (max-width: 700px) {
+  .nav-sub { display: none; }
+  .path-grid { grid-template-columns: 1fr; }
+  .todo-card, .victory-path { padding: 17px 15px; }
+  .todo-info span { display: none; }
+  .todo-cta { padding: 9px 11px; font-size: 10.5px; }
+  .todo-row { gap: 9px; padding: 9px 11px; }
+  .path-card { padding: 12px 13px; }
 }

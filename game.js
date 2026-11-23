@@ -8,11 +8,11 @@
   // ============================== ДАННЫЕ ==============================
 
   const VIEWS = [
-    { id: "overview", label: "Кабинет", icon: "⌂" },
-    { id: "team", label: "Команда", icon: "♙" },
-    { id: "research", label: "Исследования", icon: "⌘" },
-    { id: "projects", label: "Проекты", icon: "▤" },
-    { id: "market", label: "Рынок", icon: "↗" }
+    { id: "overview", label: "Кабинет", icon: "⌂", sub: "главный экран" },
+    { id: "team", label: "Команда", icon: "♙", sub: "найм и обучение" },
+    { id: "research", label: "Исследования", icon: "⌘", sub: "технологии и проекты" },
+    { id: "projects", label: "Проекты", icon: "▤", sub: "запуски и экспансия" },
+    { id: "market", label: "Рынок", icon: "↗", sub: "цены, кредиты, ставки" }
   ];
 
   const STAGES = [
@@ -408,9 +408,9 @@
       news: [],
       tutorialDismissed: false,
       helpOpen: false,
-      collapsed: { achievements: true, log: true },
+      collapsed: { achievements: true, log: true, goals: true },
       floatFx: null,
-      stats: { weeksPlayed: 0, bestWeekProfit: 0, totalRevenue: 0, gamblesWon: 0, gamblesPlayed: 0, eventsResolved: 0, loansTaken: 0, luckyWin: false },
+      stats: { weeksPlayed: 0, bestWeekProfit: 0, totalRevenue: 0, gamblesWon: 0, gamblesPlayed: 0, eventsResolved: 0, loansTaken: 0, luckyWin: false, campaignsDone: 0 },
       bankruptcyWeeks: 0,
       bestCash: 30000,
       bestShare: 4,
@@ -618,7 +618,7 @@
     if (action === "DISMISS_TUTORIAL") return { ...state, tutorialDismissed: true };
     if (action === "TOGGLE_SECTION") {
       const key = String(payload.key || "");
-      if (key !== "achievements" && key !== "log") return state;
+      if (key !== "achievements" && key !== "log" && key !== "goals") return state;
       const collapsed = { ...(state.collapsed || {}) };
       collapsed[key] = collapsed[key] === false;
       return { ...state, collapsed };
@@ -842,6 +842,7 @@
         ...state,
         cash: state.cash - cost,
         marketingWeeksLeft: 3,
+        stats: { ...state.stats, campaignsDone: (state.stats.campaignsDone || 0) + 1 },
         notice: "Маркетинговая кампания запущена на 3 недели."
       }, "Запущена маркетинговая кампания (3 недели).", "good");
     }
@@ -1092,7 +1093,9 @@
 
   function navButton(item, activeView) {
     return `<button class="nav-link ${activeView === item.id ? "active" : ""}" data-action="NAV" data-view="${item.id}" aria-current="${activeView === item.id ? "page" : "false"}">
-      <span class="nav-icon" aria-hidden="true">${item.icon}</span><span>${item.label}</span><span class="nav-chevron">›</span>
+      <span class="nav-icon" aria-hidden="true">${item.icon}</span>
+      <span class="nav-label"><span>${item.label}</span>${item.sub ? `<small class="nav-sub">${item.sub}</small>` : ""}</span>
+      <span class="nav-chevron">›</span>
     </button>`;
   }
 
@@ -1340,21 +1343,8 @@
     const pulsePct = ((state.marketPulse - 1) * 100);
     return `${pageHeading(`${esc(STAGES[state.stage].name.toUpperCase())} · НЕДЕЛЯ ${String(state.week).padStart(2, "0")}`, "Кабинет основателя", "Управляйте стратегией платформы: команда, технологии, проекты и рынок — каждый ход решает.", `<button class="primary-button" data-action="END_WEEK">Завершить неделю <span>→</span></button>`)}
       ${renderTutorial(state)}
-      <section class="hero-card">
-        <div class="hero-copy">
-          <div class="hero-pill"><span class="pulse"></span> ${state.event ? "СОБЫТИЕ ТРЕБУЕТ РЕШЕНИЯ" : state.cash < 0 ? "ФИНАНСОВЫЙ КРИЗИС" : "НЕДЕЛЯ В РАБОТЕ"}</div>
-          <h2>От пилотного города<br>до международного рынка.</h2>
-          <p>Ожидаемый спрос — <strong>${number(forecast)} заказов</strong>, мощности — <strong>${number(cap)}</strong>. Рынок этой неделей <strong>${pulsePct >= 0 ? "растёт" : "падает"} на ${Math.abs(pulsePct).toFixed(0)}%</strong>.</p>
-          <div class="hero-bottom"><button class="hero-button" data-action="END_WEEK">Закрыть неделю <span>→</span></button><span class="hero-caption">Отчёт и события — сразу после смены</span></div>
-        </div>
-        <div class="hero-illustration" aria-hidden="true">
-          <div class="illustration-sun"></div>
-          <div class="share-orb"><strong>${state.share.toFixed(1)}%</strong><span>ДОЛЯ РЫНКА</span></div>
-          <div class="floating-box box-one">✦ <span>НАУКА +${researchPerWeek(state)}/НЕД</span></div>
-          <div class="floating-box box-two"><span class="float-dot"></span> КОМАНДА: ${state.team.length}/${teamCap(state)}</div>
-          <div class="hero-ground"></div>
-        </div>
-      </section>
+      ${renderTodo(state)}
+      ${renderVictoryPath(state)}
 
       <section class="metrics-grid" aria-label="Показатели компании">
         ${metricCard("₽", "Касса", money(state.cash), latest ? `${latest.profit >= 0 ? "+" : "−"}${money(Math.abs(latest.profit))} за неделю` : "Стартовый капитал", "green", state.history.map(item => item.profit))}
@@ -1421,9 +1411,16 @@
   function renderGoals(state) {
     const done = new Set(state.goalsDone);
     const missed = new Set(state.goalsMissed);
+    const isOpen = (state.collapsed || {}).goals === false;
+    const sorted = [...GOALS].sort((a, b) => {
+      const rank = goal => done.has(goal.id) ? 2 : missed.has(goal.id) ? 1 : 0;
+      if (rank(a) !== rank(b)) return rank(a) - rank(b);
+      return (a.deadline || 999) - (b.deadline || 999);
+    });
+    const visible = isOpen ? sorted : sorted.slice(0, 5);
     return `<section class="objectives-section goals-section">
       <div class="section-heading"><div><div class="eyebrow">ЦЕЛИ ОСНОВАТЕЛЯ</div><h2>Дорожная карта</h2></div><span>Дедлайны сгорают!</span></div>
-      <div class="goals-list">${GOALS.map(goal => {
+      <div class="goals-list">${visible.map(goal => {
         const isDone = done.has(goal.id);
         const isMissed = missed.has(goal.id);
         const progress = Math.min(goalProgress(state, goal), goal.target);
@@ -1439,13 +1436,14 @@
           <span class="goal-reward ${isMissed ? "missed" : ""}">${isDone ? "✓ готово" : isMissed ? "✕ сгорела" : `+${money(goal.reward)}`}</span>
         </div>`;
       }).join("")}</div>
+      ${sorted.length > visible.length || isOpen ? `<button class="collapse-bar" data-action="TOGGLE_SECTION" data-key="goals"><span>${isOpen ? "Свернуть список целей" : `Показать все цели (${sorted.length})`}</span><span class="collapse-toggle">${isOpen ? "▲" : "▼"}</span></button>` : ""}
     </section>`;
   }
 
   function renderReport(state) {
     const report = state.lastReport;
     if (!report) {
-      return `<section class="panel report-panel report-empty-panel" id="report"><div class="report-empty-icon">▤</div><div><div class="eyebrow">ОТЧЁТ НЕДЕЛИ</div><h2>Первая неделя ещё впереди</h2><p>Завершите неделю — разберём спрос, выручку, расходы и прибыль, чтобы решить, что делать дальше.</p></div><span class="report-next">ПОСЛЕ НЕДЕЛИ ↘</span></section>`;
+      return `<section class="panel report-panel report-empty-panel" id="report"><div class="report-empty-icon">▤</div><div><div class="eyebrow">ОТЧЁТ НЕДЕЛИ</div><h2>Первая неделя ещё впереди</h2><p>Завершите неделю — и здесь появятся спрос, выручка, расходы и прибыль. Не знаете, что делать? Следуйте шагам сверху или нажмите ❓ в шапке.</p></div><span class="report-next">ПОСЛЕ НЕДЕЛИ ↘</span></section>`;
     }
     const sign = report.profit >= 0 ? "+" : "−";
     const pulse = ((report.marketPulse - 1) * 100);
@@ -1467,6 +1465,53 @@
     const items = (state.news || []).slice(0, limit);
     if (!items.length) return "";
     return `<div class="report-news"><h3>📰 Хроника рынка</h3>${items.map(item => `<div class="news-item ${esc(item.tone || "neutral")}"><span class="news-week">НЕД ${item.week}</span><p>${esc(item.text)}</p></div>`).join("")}</div>`;
+  }
+
+  function renderTodo(state) {
+    const steps = [
+      { id: "week", title: "Закройте первую неделю", why: "Так время движется вперёд: вы получите выручку и отчёт.", done: state.stats.weeksPlayed >= 1, cta: { label: "Завершить неделю →", action: "END_WEEK" } },
+      { id: "tech", title: "Изучите технологию", why: "Откройте «Исследования» — копите RP и покупайте улучшения.", done: state.completedTechs.length >= 1, cta: { label: "В Исследования →", action: "NAV", view: "research" } },
+      { id: "hire", title: "Наймите специалиста", why: "Сотрудники растят продажи, маркетинг, логистику и науку.", done: state.team.length > 3, cta: { label: "В Команду →", action: "NAV", view: "team" } },
+      { id: "project", title: "Запустите проект", why: "Проекты дают постоянный доход и бонусы к спросу.", done: state.activeProjects.length > 0 || state.completedProjects.length > 0, cta: { label: "В Проекты →", action: "NAV", view: "projects" } },
+      { id: "campaign", title: "Проведите рекламную кампанию", why: "Быстрый способ отвоевать долю рынка у конкурентов.", done: (state.stats.campaignsDone || 0) >= 1, cta: { label: "На Рынок →", action: "NAV", view: "market" } },
+      { id: "risk", title: "Попробуйте кредит или ставку", why: "Быстрые деньги с риском — сердце азарта. Шансы честные!", done: state.stats.loansTaken >= 1 || (state.stats.gamblesPlayed || 0) >= 1, cta: { label: "На Рынок →", action: "NAV", view: "market" } }
+    ];
+    const allDone = steps.every(step => step.done);
+    const next = steps.find(step => !step.done);
+    return `<section class="todo-card">
+      <div class="todo-head">
+        <div><div class="eyebrow">ЧТО ДЕЛАТЬ</div><h2>${allDone ? "Вы освоили основы!" : "Ваши первые шаги"}</h2></div>
+        <span class="todo-progress">${steps.filter(step => step.done).length} / ${steps.length} готово</span>
+      </div>
+      <div class="todo-list">${steps.map((step, index) => `
+        <div class="todo-row ${step.done ? "done" : ""} ${step === next ? "next" : ""}">
+          <span class="todo-num">${step.done ? "✓" : index + 1}</span>
+          <div class="todo-info"><strong>${step.title}</strong><span>${step.why}</span></div>
+          ${step.done ? `<span class="todo-done-label">ГОТОВО</span>` : `<button class="todo-cta" data-action="${step.cta.action}" ${step.cta.view ? `data-view="${step.cta.view}"` : ""}>${step.cta.label}</button>`}
+        </div>`).join("")}</div>
+      ${allDone ? `<p class="todo-foot">Дальше — стратегия: следите за целями и дедлайнами. Условия победы — на карте ниже. <button class="text-action" data-action="TOGGLE_HELP">Открыть правила ❓</button></p>` : ""}
+    </section>`;
+  }
+
+  function renderVictoryPath(state) {
+    const items = [
+      { icon: "🌍", title: "Экспансия", sub: `${STAGES[state.stage].name} → Международный`, value: `${state.stage} / 3`, fill: state.stage / 3 * 100 },
+      { icon: "📈", title: "Доля рынка", sub: "обгоните всех конкурентов", value: `${state.share.toFixed(1)}% / 22%`, fill: state.share / 22 * 100 },
+      { icon: "💰", title: "Касса", sub: "запас для империи", value: `${money(state.cash)} / 250 000 ₽`, fill: state.cash / 250000 * 100 }
+    ];
+    return `<section class="victory-path">
+      <div class="path-head">
+        <div><div class="eyebrow">ПЛАН ПОБЕДЫ</div><h2>Три условия триумфа</h2></div>
+        <span class="period-chip">НЕДЕЛЯ ${String(state.week).padStart(2, "0")}</span>
+      </div>
+      <div class="path-grid">${items.map(item => `
+        <div class="path-card">
+          <div class="path-title"><span class="path-icon">${item.icon}</span><strong>${item.title}</strong></div>
+          <div class="path-value">${item.value}</div>
+          <div class="small-progress"><div class="path-fill" style="width:${clamp(item.fill, 2, 100)}%"></div></div>
+          <div class="path-sub">${item.sub}</div>
+        </div>`).join("")}</div>
+    </section>`;
   }
 
   function renderTutorial(state) {
