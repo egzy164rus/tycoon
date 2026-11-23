@@ -7,6 +7,10 @@
     reducer: window.MarketTycoon.reducer,
     render: window.MarketTycoon.render
   });
+  // При запуске приложения всегда показываем экран приветствия.
+  if (engine.state.phase === "playing") {
+    engine.state = { ...engine.state, phase: "menu" };
+  }
   engine.start();
 
   // Service workers require HTTPS (localhost is also allowed).

@@ -1,8 +1,8 @@
 /*
  * «Свой Маркет» — глубокий тайкун-симулятор маркетплейса.
  * Пошаговая игра: каждый ход — неделя. Команда, исследования,
- * проекты, конкуренты, события с выбором и финансы.
- * Правила отделены от движка: state → reducer → render.
+ * проекты, конкуренты, кредиты, рискованные ставки и события с выбором.
+ * Экраны: приветствие → игра → победа / банкротство.
  */
 (() => {
   // ============================== ДАННЫЕ ==============================
@@ -16,10 +16,16 @@
   ];
 
   const STAGES = [
-    { name: "Пилотный город", market: 900, expandCost: 60000 },
-    { name: "Область", market: 3200, expandCost: 220000 },
-    { name: "Вся страна", market: 11000, expandCost: 900000 },
+    { name: "Пилотный город", market: 900, expandCost: 35000 },
+    { name: "Область", market: 3200, expandCost: 110000 },
+    { name: "Вся страна", market: 11000, expandCost: 260000 },
     { name: "Международный рынок", market: 40000, expandCost: 0 }
+  ];
+
+  const DIFFICULTIES = [
+    { id: 1, name: "Спокойный", desc: "Мягкий старт и щедрый капитал", icon: "☼", cash: 45000, eventChance: 0.42, vol: 0.7, aggression: 0.1 },
+    { id: 2, name: "Стандарт", desc: "Честный вызов для стратега", icon: "◈", cash: 32000, eventChance: 0.55, vol: 1, aggression: 0.22 },
+    { id: 3, name: "Титан", desc: "Жёсткая конкуренция и высокие ставки", icon: "⚡", cash: 22000, eventChance: 0.68, vol: 1.35, aggression: 0.35 }
   ];
 
   const ROLES = [
@@ -31,20 +37,17 @@
   ];
 
   const TECHS = [
-    // Логистика
     { id: "sort_center", branch: "logistics", name: "Сортировочный центр", rp: 30, money: 15000, requires: [], desc: "Заказы обрабатываются быстрее и дешевле.", effectText: "−15% расходов на логистику" },
-    { id: "express", branch: "logistics", name: "Экспресс-доставка", rp: 45, money: 28000, requires: ["sort_center"], desc: "Доставка за день повышает доверие покупателей.", effectText: "+8% спроса, репутация растёт быстрее" },
+    { id: "express", branch: "logistics", name: "Экспресс-доставка", rp: 45, money: 28000, requires: ["sort_center"], desc: "Доставка за день повышает доверие покупателей.", effectText: "+12% спроса, репутация растёт быстрее" },
     { id: "own_fleet", branch: "logistics", name: "Свой автопарк", rp: 65, money: 48000, requires: ["express"], desc: "Курьеры под вашим контролем.", effectText: "+25% мощности доставки, −10% расходов" },
     { id: "robots", branch: "logistics", name: "Роботизация склада", rp: 95, money: 90000, requires: ["own_fleet"], desc: "Роботы собирают заказы круглосуточно.", effectText: "−25% расходов на логистику, +20% мощности склада" },
-    // Продукт
-    { id: "mobile_app", branch: "product", name: "Мобильное приложение", rp: 35, money: 20000, requires: [], desc: "Покупателям удобнее заказывать со смартфона.", effectText: "+12% спроса" },
+    { id: "mobile_app", branch: "product", name: "Мобильное приложение", rp: 35, money: 20000, requires: [], desc: "Покупателям удобнее заказывать со смартфона.", effectText: "+18% спроса" },
     { id: "reviews", branch: "product", name: "Система отзывов", rp: 30, money: 14000, requires: [], desc: "Честные отзывы повышают доверие.", effectText: "Репутация растёт быстрее" },
     { id: "ai_recs", branch: "product", name: "ИИ-рекомендации", rp: 60, money: 42000, requires: ["mobile_app"], desc: "Персональные подборки увеличивают чек.", effectText: "+10% к среднему чеку" },
     { id: "plus_sub", branch: "product", name: "Платформа подписки", rp: 80, money: 60000, requires: ["ai_recs"], desc: "Технология для регулярного дохода с подписчиков.", effectText: "Открывает проект «Подписка Плюс»" },
-    // Маркетинг
     { id: "brand", branch: "marketing", name: "Бренд-платформа", rp: 30, money: 18000, requires: [], desc: "Единый стиль и голос бренда.", effectText: "Реклама эффективнее на 30%" },
     { id: "partner_program", branch: "marketing", name: "Партнёрская программа", rp: 40, money: 24000, requires: [], desc: "Продавцам выгодно расти вместе с вами.", effectText: "Лояльность продавцов растёт" },
-    { id: "mega_sales", branch: "marketing", name: "Большие распродажи", rp: 55, money: 36000, requires: ["brand"], desc: "Городские события скидок под вашим брендом.", effectText: "+6% спроса" },
+    { id: "mega_sales", branch: "marketing", name: "Большие распродажи", rp: 55, money: 36000, requires: ["brand"], desc: "Городские события скидок под вашим брендом.", effectText: "+10% спроса" },
     { id: "exclusives", branch: "marketing", name: "Эксклюзивные бренды", rp: 85, money: 75000, requires: ["partner_program", "mega_sales"], desc: "Товары, которых нет у конкурентов.", effectText: "Доля рынка растёт быстрее" }
   ];
 
@@ -55,14 +58,26 @@
   ];
 
   const PROJECTS = [
-    { id: "app_launch", name: "Запуск мобильного приложения", weeks: 4, cost: 45000, requires: [], desc: "Собственное приложение для покупателей.", effectText: "+15% спроса, +1% доли рынка", stage: 0 },
-    { id: "new_warehouse", name: "Склад в новом городе", weeks: 3, cost: 38000, requires: [], desc: "Расширяем географию доставки.", effectText: "+40% мощности, +5% спроса", stage: 0 },
+    { id: "app_launch", name: "Запуск мобильного приложения", weeks: 4, cost: 45000, requires: [], desc: "Собственное приложение для покупателей.", effectText: "+25% спроса, +1% доли рынка", stage: 0 },
+    { id: "new_warehouse", name: "Склад в новом городе", weeks: 3, cost: 38000, requires: [], desc: "Расширяем географию доставки.", effectText: "+40% мощности, +10% спроса", stage: 0 },
     { id: "ad_blitz", name: "Кампания «Весь город»", weeks: 2, cost: 20000, requires: [], desc: "Масштабная реклама с долгим эффектом.", effectText: "+20% спроса на 4 недели, +1% доли", stage: 0 },
     { id: "analytics_dept", name: "Отдел аналитики", weeks: 2, cost: 22000, requires: [], desc: "Данные превращаются в решения.", effectText: "+5 очков исследований в неделю", stage: 0 },
     { id: "logistics_contract", name: "Контракт с логистической сетью", weeks: 2, cost: 28000, requires: [], desc: "Скидки на доставку по всему рынку.", effectText: "−20% расходов на логистику", stage: 0 },
-    { id: "loyalty_club", name: "Клуб лояльности", weeks: 3, cost: 26000, requires: ["reviews"], desc: "Покупатели возвращаются снова и снова.", effectText: "+10% спроса, репутация растёт", stage: 0 },
+    { id: "loyalty_club", name: "Клуб лояльности", weeks: 3, cost: 26000, requires: ["reviews"], desc: "Покупатели возвращаются снова и снова.", effectText: "+16% спроса, репутация растёт", stage: 0 },
     { id: "subscription", name: "Подписка «Маркет Плюс»", weeks: 3, cost: 30000, requires: ["plus_sub"], desc: "Регулярный доход с подписчиков.", effectText: "Еженедельный доход с подписки", stage: 0 },
     { id: "expansion", name: "Экспансия: новый рынок", weeks: 4, cost: 0, requires: [], desc: "Выход из пилотного города в большой рынок.", effectText: "Открывает следующую стадию игры", stage: 0, isExpansion: true }
+  ];
+
+  const LOANS = [
+    { id: "micro", name: "Микрозайм", icon: "⚡", amount: 20000, weekly: 5200, weeks: 5, minShare: 0, desc: "Быстрые деньги, но платим каждую неделю." },
+    { id: "bank", name: "Банковский кредит", icon: "▤", amount: 60000, weekly: 8400, weeks: 9, minShare: 0, desc: "Классическое финансирование для роста." },
+    { id: "invest", name: "Инвестиционный транш", icon: "✦", amount: 150000, weekly: 15000, weeks: 12, minShare: 10, desc: "Крупная сумма для уверенного рывка." }
+  ];
+
+  const GAMBLERS = [
+    { id: "spec_buy", name: "Спекулятивная закупка", icon: "₽", stake: 15000, p: 0.45, okText: "+35 000 ₽", failText: "Ставка сгорает", ok: { cash: 35000 }, fail: {}, desc: "Покупаем партию товара на пике спроса и надеемся продать дороже." },
+    { id: "hackathon", name: "Хакатон выходного дня", icon: "⌘", stake: 10000, p: 0.5, okText: "+22 RP · +5 морали", failText: "−10 морали", ok: { rp: 22, morale: 5 }, fail: { morale: -10 }, desc: "Команда работает в выходные над прорывной идеей." },
+    { id: "exclusive_deal", name: "Рискованная эксклюзивная сделка", icon: "◈", stake: 25000, p: 0.4, okText: "+1,6% доли рынка", failText: "−6 репутации", ok: { share: 1.6 }, fail: { reputation: -6 }, desc: "Заключаем смелый контракт раньше конкурентов." }
   ];
 
   const EVENTS = [
@@ -86,23 +101,23 @@
       id: "couriers_strike", icon: "⚠", title: "Курьеры грозят забастовкой",
       text: "Доставщики недовольны оплатой в пиковый сезон. Нужно решить быстро.",
       choices: [
-        { label: "Поднять оплату курьерам", hint: "−14 000 ₽ · +2 морали команде", effects: { cash: -14000, morale: 2 } },
+        { label: "Поднять оплату курьерам", hint: "−11 000 ₽ · +2 морали команде", effects: { cash: -11000, morale: 2 } },
         { label: "Договориться на словах", hint: "−4 репутации · −3 лояльности", effects: { reputation: -4, loyalty: -3 } }
       ]
     },
     {
       id: "exclusive_brand", icon: "◈", title: "Крупный бренд просит эксклюзив",
-      text: "Известный бренд готовен продавать только у вас. Нужен депозит и гарантии.",
+      text: "Известный бренд готов продавать только у вас. Нужен депозит и гарантии.",
       choices: [
-        { label: "Подписать эксклюзив", hint: "−20 000 ₽ · +1,5% доли рынка", effects: { cash: -20000, share: 1.5 } },
+        { label: "Подписать эксклюзив", hint: "−16 000 ₽ · +1,5% доли рынка", effects: { cash: -16000, share: 1.5 } },
         { label: "Работать со всеми брендами", hint: "+2 лояльности продавцов", effects: { loyalty: 2 } }
       ]
     },
     {
       id: "price_war", icon: "⚔", title: "Конкуренты начинают войну скидок",
-      text: "«МаркетПро» и «БыстроМаркет» одновременно запустили гигантские распродажи.",
+      text: "«МаркетПро» и «БыстроМаркет» одновременно запустили гигантские распродажи. Рынок нестабилен.",
       choices: [
-        { label: "Участвовать в войне скидок", hint: "−15 000 ₽ · +1% доли рынка", effects: { cash: -15000, share: 1 } },
+        { label: "Участвовать в войне скидок", hint: "Шанс 50/50: +22 000 ₽ или −12 000 ₽", chance: { p: 0.5, ok: { cash: 22000 }, fail: { cash: -12000 }, okText: "Распродажа взорвала продажи: +22 000 ₽!", failText: "Скидки съели маржу: −12 000 ₽." } },
         { label: "Сохранить маржу", hint: "−0,8% доли рынка", effects: { share: -0.8 } }
       ]
     },
@@ -127,7 +142,7 @@
       text: "Служба безопасности обнаружила подозрительную активность в системе.",
       choices: [
         { label: "Усилить защиту немедленно", hint: "−11 000 ₽ · +2 репутации", effects: { cash: -11000, reputation: 2 } },
-        { label: "Обойтись своими силами", hint: "−8 репутации · −0,5% доли", effects: { reputation: -8, share: -0.5 } }
+        { label: "Обойтись своими силами", hint: "Шанс 50/50: отбились (+2 реп.) или утечка (−8 реп.)", chance: { p: 0.5, ok: { reputation: 2 }, fail: { reputation: -8 }, okText: "Атака отбита без потерь!", failText: "Произошла утечка данных: −8 репутации." } }
       ]
     },
     {
@@ -142,7 +157,7 @@
       id: "young_brands", icon: "✦", title: "Молодые бренды просят поддержки",
       text: "Локальные мастера хотят продавать на вашей площадке, но боятся условий.",
       choices: [
-        { label: "Запустить акселератор брендов", hint: "−14 000 ₽ · +5 лояльности · +1% доли", effects: { cash: -14000, loyalty: 5, share: 1 } },
+        { label: "Запустить акселератор брендов", hint: "−11 000 ₽ · +5 лояльности · +1% доли", effects: { cash: -11000, loyalty: 5, share: 1 } },
         { label: "Предложить стандартные условия", hint: "+2 лояльности", effects: { loyalty: 2 } }
       ]
     },
@@ -189,24 +204,32 @@
     },
     {
       id: "press_article", icon: "▤", title: "Статья «Какой маркетплейс выбрать?»",
-      text: "Крупное издание готовит обзор рынка. Можно подготовиться к упоминанию.",
+      text: "Крупное издание готовит обзор рынка. Можно подготовиться к упоминанию — или надеяться на удачу.",
       choices: [
         { label: "PR-подготовка к публикации", hint: "−6 000 ₽ · +5 репутации", effects: { cash: -6000, reputation: 5 } },
-        { label: "Положиться на качество", hint: "Шанс: +3 или −3 репутации", effects: { randomRep: 3 } }
+        { label: "Положиться на качество", hint: "Шанс 50/50: +4 реп. или −3 реп.", chance: { p: 0.5, ok: { reputation: 4 }, fail: { reputation: -3 }, okText: "Обзор вышел хвалебным!", failText: "Автор раскритиковал доставку." } }
+      ]
+    },
+    {
+      id: "mystery_investor", icon: "⚡", title: "Таинственный инвестор",
+      text: "Незнакомец предлагает рискованную сделку: крупная сумма сейчас против обещания прибыли в будущем.",
+      choices: [
+        { label: "Верить и заключить сделку", hint: "Шанс 45/55: +45 000 ₽ или −16 000 ₽", chance: { p: 0.45, ok: { cash: 45000 }, fail: { cash: -16000 }, okText: "Сделка оказалась золотой: +45 000 ₽!", failText: "Инвестор исчез с предоплатой: −16 000 ₽." } },
+        { label: "Отказаться от авантюры", hint: "+2 репутации (спокойствие)", effects: { reputation: 2 } }
       ]
     }
   ];
 
   const GOALS = [
-    { id: "first_profit", title: "Первая прибыль", description: "Закрыть неделю в плюсе", type: "profit", target: 1, reward: 5000, icon: "₽" },
+    { id: "first_profit", title: "Первая прибыль", description: "Закрыть неделю в плюсе", type: "profit", target: 1, reward: 5000, icon: "₽", deadline: 6 },
     { id: "rp50", title: "Наука", description: "Накопить 50 очков исследований", type: "rp", target: 50, reward: 6000, icon: "⌘" },
     { id: "team5", title: "Команда мечты", description: "Нанять 5 сотрудников", type: "team", target: 5, reward: 9000, icon: "♙" },
-    { id: "first_project", title: "Первый запуск", description: "Завершить любой проект", type: "projects", target: 1, reward: 8000, icon: "▤" },
-    { id: "share10", title: "Серьёзный игрок", description: "Достичь 10% доли рынка", type: "share", target: 10, reward: 15000, icon: "↗" },
+    { id: "first_project", title: "Первый запуск", description: "Завершить любой проект", type: "projects", target: 1, reward: 8000, icon: "▤", deadline: 10 },
+    { id: "share10", title: "Серьёзный игрок", description: "Достичь 10% доли рынка", type: "share", target: 10, reward: 15000, icon: "↗", deadline: 18 },
     { id: "rep80", title: "Любимая площадка", description: "Поднять репутацию до 80", type: "reputation", target: 80, reward: 12000, icon: "♡" },
     { id: "tech3", title: "Технологии", description: "Изучить 3 технологии", type: "techs", target: 3, reward: 10000, icon: "◈" },
     { id: "cash100k", title: "Капитал", description: "Накопить 100 000 ₽", type: "cash", target: 100000, reward: 12000, icon: "₽" },
-    { id: "stage2", title: "За пределами города", description: "Выйти на рынок области", type: "stage", target: 1, reward: 20000, icon: "✧" },
+    { id: "stage2", title: "За пределами города", description: "Выйти на рынок области", type: "stage", target: 1, reward: 20000, icon: "✧", deadline: 25 },
     { id: "week20", title: "Двадцать недель", description: "Довести компанию до 20-й недели", type: "week", target: 20, reward: 15000, icon: "◷" }
   ];
 
@@ -225,6 +248,9 @@
   const techById = id => TECHS.find(tech => tech.id === id);
   const projectById = id => PROJECTS.find(project => project.id === id);
   const eventById = id => EVENTS.find(event => event.id === id);
+  const loanById = id => LOANS.find(loan => loan.id === id);
+  const gambleById = id => GAMBLERS.find(item => item.id === id);
+  const diffById = id => DIFFICULTIES.find(item => item.id === Number(id)) || DIFFICULTIES[1];
 
   // ============================== СОСТОЯНИЕ ==============================
 
@@ -239,6 +265,9 @@
 
   function initialState() {
     return {
+      phase: "menu",
+      difficulty: 2,
+      companyName: "Лавка Плюс",
       week: 1,
       stage: 0,
       cash: 30000,
@@ -246,6 +275,7 @@
       sellerLoyalty: 80,
       commission: 12,
       share: 4,
+      marketPulse: 1,
       competitors: COMPETITOR_NAMES.map((name, index) => ({ id: `comp${index}`, name, weight: [0.45, 0.33, 0.22][index] })),
       team: [
         makeMember("Ольга", "seller_mgr", 2),
@@ -262,11 +292,17 @@
       warehouseLevel: 1,
       couriers: 2,
       tempDemand: { weeks: 0, mult: 0 },
+      loans: [],
+      gambleWeek: -9,
       goalsDone: [],
+      goalsMissed: [],
+      bankruptcyWeeks: 0,
+      bestCash: 30000,
+      bestShare: 4,
       event: null,
       history: [],
       lastReport: null,
-      log: [{ week: 1, text: "Компания «Лавка Плюс» вышла на рынок пилотного города.", tone: "good" }],
+      log: [],
       notice: "",
       activeView: "overview"
     };
@@ -274,13 +310,8 @@
 
   // ============================== РАСЧЁТЫ ==============================
 
-  function hasTech(state, id) {
-    return state.completedTechs.includes(id);
-  }
-
-  function hasProject(state, id) {
-    return state.completedProjects.includes(id);
-  }
+  const hasTech = (state, id) => state.completedTechs.includes(id);
+  const hasProject = (state, id) => state.completedProjects.includes(id);
 
   function teamCap(state) {
     return 3 + state.officeLevel * 2;
@@ -319,12 +350,12 @@
 
   function demandMultiplier(state) {
     let mult = 1;
-    if (hasTech(state, "express")) mult += 0.08;
-    if (hasTech(state, "mobile_app")) mult += 0.12;
-    if (hasTech(state, "mega_sales")) mult += 0.06;
-    if (hasProject(state, "app_launch")) mult += 0.15;
-    if (hasProject(state, "new_warehouse")) mult += 0.05;
-    if (hasProject(state, "loyalty_club")) mult += 0.1;
+    if (hasTech(state, "express")) mult += 0.12;
+    if (hasTech(state, "mobile_app")) mult += 0.18;
+    if (hasTech(state, "mega_sales")) mult += 0.1;
+    if (hasProject(state, "app_launch")) mult += 0.25;
+    if (hasProject(state, "new_warehouse")) mult += 0.1;
+    if (hasProject(state, "loyalty_club")) mult += 0.16;
     if (state.marketingWeeksLeft > 0) mult += hasTech(state, "brand") ? 0.39 : 0.3;
     if (state.tempDemand.weeks > 0) mult += state.tempDemand.mult;
     return mult;
@@ -348,6 +379,14 @@
     return state.team.reduce((sum, member) => sum + member.salary, 0);
   }
 
+  function weeklyLoanPayments(state) {
+    return state.loans.reduce((sum, loan) => sum + loan.weekly, 0);
+  }
+
+  function totalDebt(state) {
+    return state.loans.reduce((sum, loan) => sum + loan.weekly * loan.weeksLeft, 0);
+  }
+
   function researchPerWeek(state) {
     const raw = teamSkill(state, "dev") * 2.5 + teamSkill(state, "analyst") * 2 + (hasProject(state, "analytics_dept") ? 5 : 0);
     return Math.max(1, Math.round(raw * moraleFactor(state)));
@@ -355,8 +394,7 @@
 
   function forecastDemand(state) {
     const stage = STAGES[state.stage];
-    const shareDrift = 0;
-    return Math.max(1, Math.round(stage.market * (state.share + shareDrift) / 100 * demandMultiplier(state)));
+    return Math.max(1, Math.round(stage.market * state.share / 100 * demandMultiplier(state) * state.marketPulse));
   }
 
   function marketShares(state) {
@@ -367,6 +405,10 @@
       { name: "Вы", share: yourShare, you: true },
       ...state.competitors.map(competitor => ({ name: competitor.name, share: rest * competitor.weight / totalWeight }))
     ];
+  }
+
+  function hasSave(state) {
+    return state.week > 1 || (state.history || []).length > 0;
   }
 
   // ============================== ЦЕЛИ ==============================
@@ -387,25 +429,37 @@
     }
   }
 
-  function awardGoals(state) {
-    const done = new Set(state.goalsDone);
-    const fresh = GOALS.filter(goal => !done.has(goal.id) && goalProgress(state, goal) >= goal.target);
-    if (!fresh.length) return state;
-    const reward = fresh.reduce((sum, goal) => sum + goal.reward, 0);
-    const names = fresh.map(goal => `«${goal.title}»`).join(", ");
-    return pushLog({
-      ...state,
-      cash: state.cash + reward,
-      goalsDone: [...state.goalsDone, ...fresh.map(goal => goal.id)],
-      notice: `Цель выполнена: ${names}. Награда — ${money(reward)}!`
-    }, `Выполнены цели: ${names}. Награда ${money(reward)}.`, "good");
-  }
-
   function pushLog(state, text, tone = "info") {
     return { ...state, log: [{ week: state.week, text, tone }, ...(state.log || [])].slice(0, 12) };
   }
 
-  // ============================== СОБЫТИЯ ==============================
+  function awardGoals(state) {
+    let next = state;
+    // Сроки: цели с дедлайном, не выполненные вовремя, сгорают.
+    const missed = new Set(state.goalsMissed);
+    const doneSet = new Set(state.goalsDone);
+    const expired = GOALS.filter(goal => goal.deadline && next.week > goal.deadline && !doneSet.has(goal.id) && !missed.has(goal.id));
+    for (const goal of expired) {
+      missed.add(goal.id);
+      next = pushLog(next, `Срок цели «${goal.title}» истёк — награда сгорела.`, "bad");
+    }
+    const fresh = GOALS.filter(goal => !doneSet.has(goal.id) && !missed.has(goal.id) && goalProgress(next, goal) >= goal.target);
+    if (!fresh.length) {
+      return expired.length ? { ...next, goalsMissed: [...missed] } : next;
+    }
+    const reward = fresh.reduce((sum, goal) => sum + goal.reward, 0);
+    const names = fresh.map(goal => `«${goal.title}»`).join(", ");
+    next = pushLog({
+      ...next,
+      cash: next.cash + reward,
+      goalsDone: [...next.goalsDone, ...fresh.map(goal => goal.id)],
+      goalsMissed: [...missed],
+      notice: `Цель выполнена: ${names}. Награда — ${money(reward)}!`
+    }, `Выполнены цели: ${names}. Награда ${money(reward)}.`, "good");
+    return next;
+  }
+
+  // ============================== СОБЫТИЯ И ЭФФЕКТЫ ==============================
 
   function applyEffects(state, effects) {
     const next = { ...state };
@@ -419,10 +473,6 @@
       const weeks = Math.max(state.tempDemand.weeks, effects.demandWeeks);
       next.tempDemand = { weeks, mult: state.tempDemand.mult + effects.demandMult };
     }
-    if (effects.randomRep) {
-      const roll = Math.random() > 0.5 ? effects.randomRep : -effects.randomRep;
-      next.reputation = clamp(next.reputation + roll, 0, 100);
-    }
     return next;
   }
 
@@ -431,6 +481,35 @@
   function reducer(state, action, payload = {}) {
     if (action === "CLEAR_NOTICE") return { ...state, notice: "" };
     if (action === "SHOW_NOTICE") return { ...state, notice: String(payload.text || "") };
+
+    if (action === "SET_DIFFICULTY") {
+      return { ...state, difficulty: diffById(payload.id).id };
+    }
+
+    if (action === "SET_NAME") {
+      const name = String(payload.value || "").trim().slice(0, 24);
+      return { ...state, companyName: name || "Лавка Плюс" };
+    }
+
+    if (action === "NEW_GAME") {
+      const fresh = initialState();
+      const diff = diffById(state.difficulty);
+      return pushLog({
+        ...fresh,
+        phase: "playing",
+        difficulty: diff.id,
+        companyName: state.companyName || "Лавка Плюс",
+        cash: diff.cash,
+        bestCash: diff.cash,
+        log: []
+      }, `Компания «${state.companyName || "Лавка Плюс"}» вышла на рынок. Сложность: ${diff.name}. Удачи!`, "good");
+    }
+
+    if (action === "CONTINUE") {
+      return { ...state, phase: "playing", notice: `С возвращением! Продолжаем с недели ${state.week}.` };
+    }
+
+    if (action === "TO_MENU") return { ...initialState(), difficulty: state.difficulty, companyName: state.companyName };
 
     if (action === "NAV") {
       const view = VIEWS.some(item => item.id === payload.view) ? payload.view : "overview";
@@ -449,17 +528,64 @@
       if (!event) return state;
       const choice = event.choices[Number(payload.index) || 0];
       if (!choice) return state;
-      let next = applyEffects({ ...state, event: null }, choice.effects || {});
-      const moneyHint = choice.effects && choice.effects.cash ? ` (${money(choice.effects.cash)})` : "";
-      next = pushLog(next, `Событие «${event.title}»: ${choice.label}${moneyHint}.`, "event");
-      next.notice = `Решение принято: ${choice.label}.`;
+      let next = { ...state, event: null };
+      if (choice.chance) {
+        const roll = Math.random();
+        if (roll < choice.chance.p) {
+          next = applyEffects(next, choice.chance.ok || {});
+          next = pushLog(next, `«${event.title}»: ${choice.label} — удача! ${choice.chance.okText}`, "good");
+          next.notice = `Удача на вашей стороне: ${choice.chance.okText}`;
+        } else {
+          next = applyEffects(next, choice.chance.fail || {});
+          next = pushLog(next, `«${event.title}»: ${choice.label} — не вышло. ${choice.chance.failText}`, "bad");
+          next.notice = `Риск не оправдался: ${choice.chance.failText}`;
+        }
+      } else {
+        next = applyEffects(next, choice.effects || {});
+        const moneyHint = choice.effects && choice.effects.cash ? ` (${money(choice.effects.cash)})` : "";
+        next = pushLog(next, `Событие «${event.title}»: ${choice.label}${moneyHint}.`, "event");
+        next.notice = `Решение принято: ${choice.label}.`;
+      }
+      return awardGoals(next);
+    }
+
+    if (action === "TAKE_LOAN") {
+      const loan = loanById(payload.id);
+      if (!loan) return state;
+      if (state.loans.some(item => item.id === loan.id)) return { ...state, notice: "Этот кредит уже активен." };
+      if (state.loans.length >= 2) return { ...state, notice: "Одновременно можно иметь не более двух кредитов." };
+      if (state.share < loan.minShare) return { ...state, notice: `Для этого финансирования нужно ${loan.minShare}% доли рынка.` };
+      return pushLog({
+        ...state,
+        cash: state.cash + loan.amount,
+        loans: [...state.loans, { id: loan.id, weekly: loan.weekly, weeksLeft: loan.weeks }],
+        notice: `${loan.name}: +${money(loan.amount)} на счёт. Платёж ${money(loan.weekly)} еженедельно, ${loan.weeks} нед.`
+      }, `Взят ${loan.name.toLowerCase()} на ${money(loan.amount)}.`, "event");
+    }
+
+    if (action === "TAKE_GAMBLE") {
+      const gamble = gambleById(payload.id);
+      if (!gamble) return state;
+      if (state.week - state.gambleWeek < 2) return { ...state, notice: `Ставки доступны раз в две недели. Подождите ещё ${2 - (state.week - state.gambleWeek)} нед.` };
+      if (state.cash < gamble.stake) return { ...state, notice: `Не хватает средств: ставка ${money(gamble.stake)}.` };
+      let next = { ...state, cash: state.cash - gamble.stake, gambleWeek: state.week };
+      const win = Math.random() < gamble.p;
+      if (win) {
+        next = applyEffects(next, gamble.ok || {});
+        next = pushLog(next, `Ставка «${gamble.name}» сыграла! ${gamble.okText}.`, "good");
+        next.notice = `Азарт вознаграждён: ${gamble.okText}!`;
+      } else {
+        next = applyEffects(next, gamble.fail || {});
+        next = pushLog(next, `Ставка «${gamble.name}» не сыграла. ${gamble.failText}.`, "bad");
+        next.notice = `Не повезло: ${gamble.failText}.`;
+      }
       return awardGoals(next);
     }
 
     if (action === "HIRE") {
       const candidate = state.candidates.find(item => item.id === payload.id);
       if (!candidate) return state;
-      if (state.team.length >= teamCap(state)) return { ...state, notice: `Офис заполнен: расширьте офис, чтобы нанять больше людей (сейчас лимит ${teamCap(state)}).` };
+      if (state.team.length >= teamCap(state)) return { ...state, notice: `Офис заполнен: расширьте офис, чтобы нанять больше людей (лимит ${teamCap(state)}).` };
       const signing = candidate.salary * 2;
       if (state.cash < signing) return { ...state, notice: `Не хватает средств: подписание стоит ${money(signing)}.` };
       const role = roleById(candidate.role);
@@ -587,7 +713,7 @@
 
     if (action === "START_PROJECT") {
       const project = projectById(payload.id);
-      if (!project || state.completedProjects.includes(project.id)) return state;
+      if (!project || (!project.isExpansion && state.completedProjects.includes(project.id))) return state;
       if (state.activeProjects.some(item => item.id === project.id)) return { ...state, notice: "Этот проект уже идёт." };
       if (state.activeProjects.length >= projectSlots(state)) return { ...state, notice: `Все слоты проектов заняты (${projectSlots(state)}). Расширьте офис или дождитесь завершения.` };
       const missing = project.requires.filter(id => !state.completedTechs.includes(id));
@@ -608,8 +734,10 @@
 
     if (action === "END_WEEK") {
       if (state.event) return { ...state, notice: "Сначала примите решение по событию недели." };
+      const diff = diffById(state.difficulty);
 
-      // --- модификаторы ---
+      // --- волатильность рынка ---
+      const marketPulse = 1 + (Math.random() - 0.5) * 0.22 * diff.vol;
       const marketTotal = STAGES[state.stage].market;
       const dMult = demandMultiplier(state);
       const cap = dailyCapacity(state);
@@ -617,30 +745,51 @@
       // --- динамика доли рынка ---
       const marketerBoost = teamSkill(state, "marketer") * 0.02;
       const commissionAttract = (15 - state.commission) * 0.02;
-      const repAttract = (state.reputation - 65) * 0.012;
-      let shareDrift = repAttract + commissionAttract + marketerBoost + (hasTech(state, "exclusives") ? 0.22 : 0) + (Math.random() * 0.5 - 0.2);
+      const repAttract = clamp((state.reputation - 65) * 0.018, -0.35, 0.35);
+      let shareDrift = 0.08 + repAttract + commissionAttract + marketerBoost + (hasTech(state, "exclusives") ? 0.22 : 0) + (Math.random() * 0.5 - 0.2);
       if (state.marketingWeeksLeft > 0) shareDrift += 0.25;
+      if (state.share < 2) shareDrift += 0.3;
+
+      // --- агрессия конкурентов ---
+      const aggressionLog = [];
+      if (Math.random() < diff.aggression) {
+        const attacker = pick(state.competitors);
+        const hit = 0.2 + Math.random() * 0.4;
+        shareDrift -= hit;
+        aggressionLog.push(`${attacker.name} атакует: промо-кампания отбивает ${hit.toFixed(1)}% доли.`);
+      } else if (Math.random() < 0.15) {
+        const victim = pick(state.competitors);
+        shareDrift += 0.45;
+        aggressionLog.push(`${victim.name} споткнулся о скандал — покупатели уходят к вам.`);
+      }
+
       const share = clamp(state.share + shareDrift, 0.5, 90);
 
       // --- спрос и выполнение ---
-      const demand = Math.max(1, Math.round(marketTotal * share / 100 * dMult * (0.92 + Math.random() * 0.16)));
+      const demand = Math.max(1, Math.round(marketTotal * share / 100 * dMult * marketPulse * (0.92 + Math.random() * 0.16)));
       const fulfilled = Math.min(demand, cap);
       const lost = Math.max(0, demand - fulfilled);
       const fillRate = demand > 0 ? fulfilled / demand : 1;
 
       // --- финансы ---
       const commissionRevenue = Math.round(fulfilled * avgOrder(state) * state.commission / 100);
-      const servicesRevenue = Math.round(state.sellerLoyalty * 45 * (1 + state.officeLevel * 0.05));
-      const subscriptionRevenue = hasProject(state, "subscription") ? Math.round(1500 + share * 700 + state.reputation * 20) : 0;
+      const servicesRevenue = Math.round(state.sellerLoyalty * 55 * (1 + state.officeLevel * 0.05));
+      const subscriptionRevenue = hasProject(state, "subscription") ? Math.round(2500 + share * 1200 + state.reputation * 30) : 0;
       const revenue = commissionRevenue + servicesRevenue + subscriptionRevenue;
 
       const salaries = weeklySalaries(state);
       const rent = 800 + state.officeLevel * 1200;
       const ops = Math.round(fulfilled * 42 * opsMultiplier(state));
       const marketingUpkeep = state.marketingWeeksLeft > 0 ? 2500 : 0;
-      const projectUpkeep = state.activeProjects.length * 1500;
-      const costs = salaries + rent + ops + marketingUpkeep + projectUpkeep;
+      const projectUpkeep = state.activeProjects.length * 1000;
+      const loanPayments = weeklyLoanPayments(state);
+      const costs = salaries + rent + ops + marketingUpkeep + projectUpkeep + loanPayments;
       const profit = revenue - costs;
+
+      // --- кредиты ---
+      const loans = state.loans
+        .map(loan => ({ ...loan, weeksLeft: loan.weeksLeft - 1 }))
+        .filter(loan => loan.weeksLeft > 0);
 
       // --- очки исследований ---
       const rpGain = researchPerWeek(state);
@@ -668,19 +817,30 @@
       let completedProjects = state.completedProjects;
       const activeProjects = [];
       const finishedNames = [];
+      let stageAfter = state.stage;
+      let bonusShare = 0;
+      let bonusDemand = null;
       for (const item of state.activeProjects) {
         const project = projectById(item.id);
         const done = item.weeksDone + 1 >= item.weeksTotal;
         if (done) {
-          completedProjects = [...completedProjects, item.id];
+          if (item.id !== "expansion") completedProjects = [...completedProjects, item.id];
           finishedNames.push(project ? project.name : item.id);
+          if (item.id === "expansion") {
+            stageAfter = Math.min(state.stage + 1, STAGES.length - 1);
+            bonusShare += 1;
+          }
+          if (item.id === "app_launch") bonusShare += 1;
+          if (item.id === "ad_blitz") {
+            bonusShare += 1;
+            bonusDemand = { weeks: 4, mult: 0.2 };
+          }
         } else {
           activeProjects.push({ ...item, weeksDone: item.weeksDone + 1 });
         }
       }
 
-      // --- конкуренты ---
-      const competitorEvent = Math.random();
+      // --- конкуренты: дрейф весов ---
       const competitors = state.competitors.map(competitor => ({
         ...competitor,
         weight: clamp(competitor.weight * (0.97 + Math.random() * 0.06), 0.1, 1)
@@ -688,50 +848,73 @@
 
       // --- событие недели ---
       let event = null;
-      if (state.week >= 2 && Math.random() < 0.55) {
-        const pool = EVENTS.filter(item => !state.event || item.id !== state.event.id);
-        event = { id: pick(pool).id };
+      if (state.week >= 2 && Math.random() < diff.eventChance) {
+        event = { id: pick(EVENTS).id };
       }
+
+      const cashAfter = state.cash + profit;
+      const bankruptcyWeeks = cashAfter < 0 ? state.bankruptcyWeeks + 1 : 0;
+      const shareAfter = clamp(share + bonusShare, 0.5, 90);
+      const tempDemandAfter = bonusDemand
+        ? { weeks: Math.max(state.tempDemand.weeks, bonusDemand.weeks), mult: state.tempDemand.mult + bonusDemand.mult }
+        : (state.tempDemand.weeks > 0 ? { weeks: state.tempDemand.weeks - 1, mult: state.tempDemand.mult } : state.tempDemand);
 
       const report = {
         week: state.week,
         demand, fulfilled, lost,
         revenue, costs, profit,
         streams: { commission: commissionRevenue, services: servicesRevenue, subscription: subscriptionRevenue },
-        breakdown: { salaries, rent, ops, marketing: marketingUpkeep, projects: projectUpkeep },
+        breakdown: { salaries, rent, ops, marketing: marketingUpkeep, projects: projectUpkeep, loans: loanPayments },
         fillRate: Math.round(fillRate * 100),
         share, shareChange: share - state.share,
+        marketPulse,
         rpGain
       };
 
       let next = {
         ...state,
         week: state.week + 1,
-        cash: state.cash + profit,
-        share,
+        cash: cashAfter,
+        share: shareAfter,
+        stage: stageAfter,
+        marketPulse,
         reputation, sellerLoyalty: loyalty, team,
         competitors,
+        loans,
         researchPoints: state.researchPoints + rpGain,
         activeProjects,
         completedProjects,
         marketingWeeksLeft: Math.max(0, state.marketingWeeksLeft - 1),
-        tempDemand: state.tempDemand.weeks > 0 ? { weeks: state.tempDemand.weeks - 1, mult: state.tempDemand.mult } : state.tempDemand,
+        tempDemand: tempDemandAfter,
+        bankruptcyWeeks,
+        bestCash: Math.max(state.bestCash || 0, cashAfter),
+        bestShare: Math.max(state.bestShare || 0, shareAfter),
         lastReport: report,
-        history: [...state.history, { week: state.week, revenue, profit, share, demand, fulfilled }].slice(-8),
+        history: [...state.history, { week: state.week, revenue, profit, share: shareAfter, demand, fulfilled }].slice(-8),
         event
       };
 
       const sign = profit >= 0 ? "+" : "−";
-      next = pushLog(next, `Неделя ${report.week}: выполнено ${number(fulfilled)} из ${number(demand)} заказов, итог ${sign}${money(Math.abs(profit))}.`, profit >= 0 ? "good" : "bad");
+      next = pushLog(next, `Неделя ${report.week}: выполнено ${number(fulfilled)} из ${number(demand)} заказов, итог ${sign}${money(Math.abs(profit))}${loanPayments ? ` (кредиты −${money(loanPayments)})` : ""}.`, profit >= 0 ? "good" : "bad");
       for (const name of finishedNames) {
         next = pushLog(next, `Проект «${name}» завершён!`, "good");
       }
-      if (competitorEvent < 0.25) {
-        const competitor = pick(state.competitors);
-        next = pushLog(next, `${competitor.name} запустил(а) новую акцию на своём рынке.`, "info");
+      if (stageAfter > state.stage) {
+        next = pushLog(next, `Экспансия завершена: вы вышли на рынок «${STAGES[stageAfter].name}»! Оборот рынка вырос в ${(STAGES[stageAfter].market / STAGES[state.stage].market).toFixed(1)} раз.`, "good");
       }
-      next.notice = `Неделя ${report.week} закрыта: прибыль ${sign}${money(Math.abs(profit))}.`;
+      for (const line of aggressionLog) {
+        next = pushLog(next, line, "event");
+      }
+      next.notice = `Неделя ${report.week} закрыта: прибыль ${sign}${money(Math.abs(profit))}. Рынок ${(marketPulse - 1) * 100 >= 0 ? "+" : "−"}${Math.abs((marketPulse - 1) * 100).toFixed(0)}%.`;
       next = awardGoals(next);
+
+      // --- банкротство и победа ---
+      if (next.cash < -80000 || next.bankruptcyWeeks >= 3) {
+        return pushLog({ ...next, phase: "gameover", event: null }, "Компания обанкротилась.", "bad");
+      }
+      if (next.stage >= STAGES.length - 1 && next.share >= 22 && next.cash >= 250000) {
+        return pushLog({ ...next, phase: "victory", event: null }, "Империя построена!", "good");
+      }
       return next;
     }
 
@@ -749,6 +932,8 @@
   function renderShell(state, content) {
     const activeTitle = (VIEWS.find(item => item.id === state.activeView) || VIEWS[0]).label;
     const fullscreenLabel = typeof document !== "undefined" && document.fullscreenElement ? "Выйти из полного экрана" : "На весь экран";
+    const diff = diffById(state.difficulty);
+    const debt = weeklyLoanPayments(state);
     return `<div class="game-shell">
       <aside class="sidebar">
         <div class="brand-row">
@@ -757,7 +942,7 @@
         </div>
         <div class="company-card">
           <div class="company-avatar">С</div>
-          <div class="company-copy"><span>ВАША КОМПАНИЯ</span><strong>Лавка Плюс</strong></div>
+          <div class="company-copy"><span>ВАША КОМПАНИЯ</span><strong>${esc(state.companyName)}</strong></div>
           <span class="company-dots" aria-hidden="true">···</span>
         </div>
         <div class="nav-caption">УПРАВЛЕНИЕ</div>
@@ -765,26 +950,28 @@
         <div class="sidebar-spacer"></div>
         <div class="sidebar-tip">
           <div class="tip-icon">✦</div>
-          <div><strong>Совет</strong><p>Держите мораль команды высокой: недовольные сотрудники работают вполсилы.</p></div>
+          <div><strong>Совет</strong><p>${state.cash < 10000 ? "Касса на нуле? Кредит или рискованная ставка могут спасти — но помните про риск." : "Следите за дедлайнами целей: сгоревшая награда — больно для бюджета."}</p></div>
         </div>
         <div class="sidebar-bottom">
           <div class="save-status"><span class="status-dot"></span><span>Сохранение включено</span></div>
           <button class="reset-button" data-action="RESET">↻ <span>Новая игра</span></button>
-          <div class="engine-stamp">MINI TYCOON ENGINE <span>v0.4</span></div>
+          <div class="engine-stamp">MINI TYCOON ENGINE <span>v0.5</span></div>
         </div>
       </aside>
       <main class="main-area">
         <header class="topbar">
-          <div class="breadcrumbs"><span>Лавка Плюс</span><span class="crumb-divider">/</span><strong>${esc(activeTitle)}</strong></div>
+          <div class="breadcrumbs"><span>${esc(state.companyName)}</span><span class="crumb-divider">/</span><strong>${esc(activeTitle)}</strong></div>
           <div class="topbar-right">
             <button class="topbar-tool" data-action="OPEN_TAB" title="Открыть игру в отдельной вкладке" aria-label="Открыть игру в отдельной вкладке"><span class="tool-icon">↗</span><span class="tool-label">В отдельную вкладку</span></button>
             <button class="topbar-tool fullscreen-tool" data-action="TOGGLE_FULLSCREEN" title="${fullscreenLabel}" aria-label="${fullscreenLabel}"><span class="tool-icon">⛶</span><span class="tool-label">${fullscreenLabel}</span></button>
-            <span class="city-pill"><span class="city-dot"></span>${esc(STAGES[state.stage].name.toUpperCase())}</span>
+            ${debt ? `<span class="city-pill debt-pill"><span class="city-dot debt"></span>ДОЛГ ${money(debt)}/НЕД</span>` : ""}
+            <span class="city-pill"><span class="city-dot"></span>${esc(STAGES[state.stage].name.toUpperCase())} · ${esc(diff.name.toUpperCase())}</span>
             <span class="day-pill">НЕДЕЛЯ ${String(state.week).padStart(2, "0")}</span>
             <div class="profile-avatar">Л</div>
           </div>
         </header>
         <div class="page-content">
+          ${state.bankruptcyWeeks > 0 ? `<div class="notice danger-notice" role="alert"><span class="notice-symbol">⚠</span><p><strong>Касса в минусе!</strong> Если баланс не восстановится за ${3 - state.bankruptcyWeeks} нед. — компания обанкротится.</p></div>` : ""}
           ${state.notice ? `<div class="notice" role="status"><span class="notice-symbol">✦</span><p>${esc(state.notice)}</p><button data-action="CLEAR_NOTICE" aria-label="Закрыть уведомление">×</button></div>` : ""}
           ${content}
           <footer class="page-footer"><span>СВОЙ МАРКЕТ · ТАЙКУН · ГЛУБОКАЯ СИМУЛЯЦИЯ</span><span>Игра сохраняется автоматически в этом браузере</span></footer>
@@ -876,53 +1063,91 @@
     </div>`;
   }
 
-  function renderGoals(state) {
-    const done = new Set(state.goalsDone);
-    return `<section class="objectives-section">
-      <div class="section-heading"><div><div class="eyebrow">ЦЕЛИ ОСНОВАТЕЛЯ</div><h2>Дорожная карта</h2></div><span>Выполняйте цели — получайте финансирование</span></div>
-      <div class="objectives-grid">${GOALS.map(goal => {
-        const isDone = done.has(goal.id);
-        const progress = Math.min(goalProgress(state, goal), goal.target);
-        const fill = clamp(Math.round(progress / goal.target * 100), 0, 100);
-        return `<article class="objective-card ${isDone ? "is-complete" : ""}">
-          <div class="objective-top"><span class="objective-icon">${goal.icon}</span><span class="objective-reward">${isDone ? "✓ ВЫПОЛНЕНО" : `НАГРАДА ${money(goal.reward)}`}</span></div>
-          <h3>${goal.title}</h3><p>${goal.description}</p>
-          <div class="objective-progress"><div style="width:${fill}%"></div></div>
-          <div class="objective-foot"><span>${number(progress)} / ${number(goal.target)}</span><strong>${isDone ? "ГОТОВО" : `${fill}%`}</strong></div>
-        </article>`;
-      }).join("")}</div>
-    </section>`;
-  }
+  // ============================== ЭКРАН ПРИВЕТСТВИЯ ==============================
 
-  function renderReport(state) {
-    const report = state.lastReport;
-    if (!report) {
-      return `<section class="panel report-panel report-empty-panel"><div class="report-empty-icon">▤</div><div><div class="eyebrow">ОТЧЁТ НЕДЕЛИ</div><h2>Первая неделя ещё впереди</h2><p>Завершите неделю — разберём спрос, выручку, расходы и прибыль, чтобы решить, что делать дальше.</p></div><span class="report-next">ПОСЛЕ НЕДЕЛИ ↘</span></section>`;
-    }
-    const sign = report.profit >= 0 ? "+" : "−";
-    return `<section class="panel report-panel">
-      <div class="panel-heading report-heading"><div><div class="eyebrow">ОТЧЁТ · НЕДЕЛЯ ${String(report.week).padStart(2, "0")}</div><h2>Как прошла неделя?</h2></div><span class="report-event">Заполнение ${report.fillRate}%</span></div>
-      <div class="report-stats">
-        <div class="report-stat"><span>Спрос</span><strong>${number(report.demand)}</strong><small>заказов</small></div>
-        <div class="report-stat"><span>Выручка</span><strong>${money(report.revenue)}</strong><small>комиссия ${money(report.streams.commission)} · сервисы ${money(report.streams.services)}${report.streams.subscription ? ` · подписки ${money(report.streams.subscription)}` : ""}</small></div>
-        <div class="report-stat"><span>Расходы</span><strong>${money(report.costs)}</strong><small>зарплаты ${money(report.breakdown.salaries)} · логистика ${money(report.breakdown.ops)} · офис ${money(report.breakdown.rent)}</small></div>
-        <div class="report-stat"><span>Очки науки</span><strong>+${number(report.rpGain)}</strong><small>за неделю</small></div>
-        <div class="report-stat report-profit ${report.profit >= 0 ? "positive" : "negative"}"><span>Чистый итог</span><strong>${sign}${money(Math.abs(report.profit))}</strong><small>прибыль за неделю</small></div>
+  function renderMenu(state) {
+    const diff = diffById(state.difficulty);
+    const showContinue = hasSave(state);
+    return `<div class="menu-screen">
+      <div class="menu-bg" aria-hidden="true">
+        <div class="menu-orb orb-1"></div><div class="menu-orb orb-2"></div><div class="menu-orb orb-3"></div>
+        <div class="menu-grid-lines"></div>
       </div>
-      <div class="report-insight"><span>✦</span><p><strong>Доля рынка:</strong> ${report.share.toFixed(1)}% (${report.shareChange >= 0 ? "+" : "−"}${Math.abs(report.shareChange).toFixed(2)} п.п.)${report.lost > 0 ? ` · <strong>Потеряно ${number(report.lost)} заказов</strong> — не хватило мощностей.` : ""}</p></div>
-    </section>`;
-  }
+      <div class="menu-card">
+        <div class="menu-brand">
+          <div class="brand-mark big" aria-hidden="true"><span></span><span></span><span></span></div>
+          <div class="menu-eyebrow">MINI TYCOON · ГЛУБОКАЯ СИМУЛЯЦИЯ</div>
+        </div>
+        <h1 class="menu-title">СВОЙ МАРКЕТ</h1>
+        <p class="menu-tagline">Тайкун: симулятор маркетплейса</p>
+        <p class="menu-story">У вас есть небольшая площадка в пилотном городе, три сотрудника и скромный капитал. Впереди — конкуренционные войны, рискованные сделки, технологии и выход на международный рынок. Каждая неделя — новое решение. Сможете ли вы построить империю — или обанкротитесь?</p>
 
-  function renderLog(state) {
-    return `<section class="panel log-panel">
-      <div class="panel-heading"><div><div class="eyebrow">ЛЕНТА СОБЫТИЙ</div><h2>Что происходит в компании</h2></div></div>
-      <div class="log-list">${(state.log || []).map(item => `
-        <div class="log-item ${esc(item.tone)}"><span class="log-week">Н${String(item.week).padStart(2, "0")}</span><p>${esc(item.text)}</p></div>`).join("")}
+        <div class="menu-section">
+          <div class="menu-label">СЛОЖНОСТЬ</div>
+          <div class="diff-row">${DIFFICULTIES.map(item => `
+            <button class="diff-pill ${item.id === diff.id ? "active" : ""}" data-action="SET_DIFFICULTY" data-id="${item.id}">
+              <span class="diff-icon">${item.icon}</span>
+              <strong>${item.name}</strong>
+              <small>${item.desc}</small>
+            </button>`).join("")}
+          </div>
+        </div>
+
+        <div class="menu-section">
+          <div class="menu-label">НАЗВАНИЕ КОМПАНИИ</div>
+          <input class="menu-input" type="text" data-action="SET_NAME" value="${esc(state.companyName)}" maxlength="24" placeholder="Лавка Плюс" aria-label="Название компании">
+        </div>
+
+        <div class="menu-actions">
+          <button class="primary-button big" data-action="NEW_GAME">Начать игру <span>→</span></button>
+          ${showContinue ? `<button class="ghost-button" data-action="CONTINUE">Продолжить · неделя ${state.week}</button>` : ""}
+        </div>
+
+        <details class="menu-rules">
+          <summary>Как играть?</summary>
+          <ul>
+            <li><strong>Каждый ход — неделя.</strong> Завершайте её, чтобы получать прибыль и отчёты.</li>
+            <li><strong>Следите за мощностями:</strong> необработанные заказы бьют по репутации.</li>
+            <li><strong>Инвестируйте:</strong> команда, технологии и проекты дают рост.</li>
+            <li><strong>Осторожно с кредитами и ставками</strong> — они дают деньги, но добавляют риска.</li>
+            <li><strong>Следите за целями с дедлайнами</strong> — просроченные награды сгорают.</li>
+            <li><strong>Победа:</strong> международный рынок, 22% доли и 250 000 ₽. <strong>Поражение:</strong> три недели в минусе.</li>
+          </ul>
+        </details>
       </div>
-    </section>`;
+    </div>`;
   }
 
-  // ============================== UI: ЭКРАНЫ ==============================
+  // ============================== ЭКРАНЫ ФИНАЛА ==============================
+
+  function renderEndScreen(state, isVictory) {
+    const diff = diffById(state.difficulty);
+    return `<div class="end-screen ${isVictory ? "victory" : "gameover"}">
+      <div class="menu-bg" aria-hidden="true"><div class="menu-orb orb-1"></div><div class="menu-orb orb-2"></div></div>
+      <div class="end-card">
+        <div class="end-icon">${isVictory ? "🏆" : "💸"}</div>
+        <div class="menu-eyebrow">${isVictory ? "ИМПЕРИЯ ПОСТРОЕНА" : "ИГРА ОКОНЧЕНА"}</div>
+        <h1>${isVictory ? "Вы — легенда рынка!" : "Компания обанкротилась"}</h1>
+        <p class="end-text">${isVictory
+          ? `«${esc(state.companyName)}» вышла на международный рынок и стала лидером. Инвесторы в восторге, конкуренты в шоке.`
+          : `Касса опустела, и кредиторы не дождались чуда. Но опыт остаётся — попробуйте снова!`}</p>
+        <div class="end-stats">
+          <div><span>Недель прожито</span><strong>${state.week - 1}</strong></div>
+          <div><span>Лучшая доля рынка</span><strong>${(state.bestShare || state.share).toFixed(1)}%</strong></div>
+          <div><span>Пик кассы</span><strong>${money(state.bestCash || state.cash)}</strong></div>
+          <div><span>Целей выполнено</span><strong>${state.goalsDone.length} / ${GOALS.length}</strong></div>
+          <div><span>Технологий</span><strong>${state.completedTechs.length}</strong></div>
+          <div><span>Сложность</span><strong>${esc(diff.name)}</strong></div>
+        </div>
+        <div class="menu-actions">
+          <button class="primary-button big" data-action="NEW_GAME">Играть снова <span>→</span></button>
+          <button class="ghost-button" data-action="TO_MENU">В главное меню</button>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  // ============================== UI: ЭКРАНЫ ИГРЫ ==============================
 
   function renderOverview(state) {
     const forecast = forecastDemand(state);
@@ -930,12 +1155,13 @@
     const capacityFill = clamp(Math.round(forecast / Math.max(1, cap) * 100), 3, 100);
     const latest = state.lastReport;
     const shares = marketShares(state);
+    const pulsePct = ((state.marketPulse - 1) * 100);
     return `${pageHeading(`${esc(STAGES[state.stage].name.toUpperCase())} · НЕДЕЛЯ ${String(state.week).padStart(2, "0")}`, "Кабинет основателя", "Управляйте стратегией платформы: команда, технологии, проекты и рынок — каждый ход решает.", `<button class="primary-button" data-action="END_WEEK">Завершить неделю <span>→</span></button>`)}
       <section class="hero-card">
         <div class="hero-copy">
-          <div class="hero-pill"><span class="pulse"></span> ${state.event ? "СОБЫТИЕ ТРЕБУЕТ РЕШЕНИЯ" : "НЕДЕЛЯ В РАБОТЕ"}</div>
+          <div class="hero-pill"><span class="pulse"></span> ${state.event ? "СОБЫТИЕ ТРЕБУЕТ РЕШЕНИЯ" : state.cash < 0 ? "ФИНАНСОВЫЙ КРИЗИС" : "НЕДЕЛЯ В РАБОТЕ"}</div>
           <h2>От пилотного города<br>до международного рынка.</h2>
-          <p>Ожидаемый спрос — <strong>${number(forecast)} заказов</strong>, мощности — <strong>${number(cap)}</strong>. Решайте, куда вложить ресурсы этой недели.</p>
+          <p>Ожидаемый спрос — <strong>${number(forecast)} заказов</strong>, мощности — <strong>${number(cap)}</strong>. Рынок этой неделей <strong>${pulsePct >= 0 ? "растёт" : "падает"} на ${Math.abs(pulsePct).toFixed(0)}%</strong>.</p>
           <div class="hero-bottom"><button class="hero-button" data-action="END_WEEK">Закрыть неделю <span>→</span></button><span class="hero-caption">Отчёт и события — сразу после смены</span></div>
         </div>
         <div class="hero-illustration" aria-hidden="true">
@@ -952,7 +1178,7 @@
         ${metricCard("↗", "Доля рынка", `${state.share.toFixed(1)}<small>%</small>`, shares[1] ? `Лидер: ${shares.slice(1).sort((a, b) => b.share - a.share)[0].name}` : "", "lime", state.history.map(item => item.share))}
         ${metricCard("♙", "Команда", `${state.team.length} <small>чел.</small>`, `Мораль: ${Math.round(state.team.reduce((s, m) => s + m.morale, 0) / Math.max(1, state.team.length))}%`, "peach")}
         ${metricCard("⌘", "Очки науки", `${number(state.researchPoints)} <small>RP</small>`, `+${researchPerWeek(state)} в неделю`, "lavender")}
-        ${metricCard("✦", "Репутация", `${Math.round(state.reputation)}<small> / 100</small>`, state.reputation >= 75 ? "Покупатели доверяют вам" : "Растёт с качеством доставки", "mint")}
+        ${metricCard("✦", "Репутация", `${Math.round(state.reputation)}<small> / 100</small>`, state.loans.length ? `Долг: ${money(totalDebt(state))}` : state.reputation >= 75 ? "Покупатели доверяют вам" : "Растёт с качеством доставки", "mint")}
       </section>
 
       <section class="dashboard-grid">
@@ -986,7 +1212,57 @@
       ${renderLog(state)}`;
   }
 
-  function teamMemberCard(member, index) {
+  function renderGoals(state) {
+    const done = new Set(state.goalsDone);
+    const missed = new Set(state.goalsMissed);
+    return `<section class="objectives-section">
+      <div class="section-heading"><div><div class="eyebrow">ЦЕЛИ ОСНОВАТЕЛЯ</div><h2>Дорожная карта</h2></div><span>Дедлайны сгорают — успевайте!</span></div>
+      <div class="objectives-grid">${GOALS.map(goal => {
+        const isDone = done.has(goal.id);
+        const isMissed = missed.has(goal.id);
+        const progress = Math.min(goalProgress(state, goal), goal.target);
+        const fill = clamp(Math.round(progress / goal.target * 100), 0, 100);
+        return `<article class="objective-card ${isDone ? "is-complete" : ""} ${isMissed ? "is-missed" : ""}">
+          <div class="objective-top"><span class="objective-icon">${goal.icon}</span><span class="objective-reward ${isMissed ? "missed" : ""}">${isDone ? "✓ ВЫПОЛНЕНО" : isMissed ? "✕ СРОК ИСТЁК" : `НАГРАДА ${money(goal.reward)}`}</span></div>
+          <h3>${goal.title}</h3><p>${goal.description}</p>
+          ${goal.deadline && !isDone && !isMissed ? `<div class="deadline-chip ${goal.deadline - state.week <= 3 ? "urgent" : ""}">⏱ До недели ${goal.deadline} · осталось ${Math.max(0, goal.deadline - state.week)} нед.</div>` : ""}
+          <div class="objective-progress"><div style="width:${fill}%"></div></div>
+          <div class="objective-foot"><span>${number(progress)} / ${number(goal.target)}</span><strong>${isDone ? "ГОТОВО" : isMissed ? "ПРОПУЩЕНО" : `${fill}%`}</strong></div>
+        </article>`;
+      }).join("")}</div>
+    </section>`;
+  }
+
+  function renderReport(state) {
+    const report = state.lastReport;
+    if (!report) {
+      return `<section class="panel report-panel report-empty-panel"><div class="report-empty-icon">▤</div><div><div class="eyebrow">ОТЧЁТ НЕДЕЛИ</div><h2>Первая неделя ещё впереди</h2><p>Завершите неделю — разберём спрос, выручку, расходы и прибыль, чтобы решить, что делать дальше.</p></div><span class="report-next">ПОСЛЕ НЕДЕЛИ ↘</span></section>`;
+    }
+    const sign = report.profit >= 0 ? "+" : "−";
+    const pulse = ((report.marketPulse - 1) * 100);
+    return `<section class="panel report-panel">
+      <div class="panel-heading report-heading"><div><div class="eyebrow">ОТЧЁТ · НЕДЕЛЯ ${String(report.week).padStart(2, "0")}</div><h2>Как прошла неделя?</h2></div><span class="report-event">Рынок ${pulse >= 0 ? "+" : "−"}${Math.abs(pulse).toFixed(0)}% · заполнение ${report.fillRate}%</span></div>
+      <div class="report-stats">
+        <div class="report-stat"><span>Спрос</span><strong>${number(report.demand)}</strong><small>заказов</small></div>
+        <div class="report-stat"><span>Выручка</span><strong>${money(report.revenue)}</strong><small>комиссия ${money(report.streams.commission)} · сервисы ${money(report.streams.services)}${report.streams.subscription ? ` · подписки ${money(report.streams.subscription)}` : ""}</small></div>
+        <div class="report-stat"><span>Расходы</span><strong>${money(report.costs)}</strong><small>зарплаты ${money(report.breakdown.salaries)} · логистика ${money(report.breakdown.ops)}${report.breakdown.loans ? ` · кредиты ${money(report.breakdown.loans)}` : ""}</small></div>
+        <div class="report-stat"><span>Очки науки</span><strong>+${number(report.rpGain)}</strong><small>за неделю</small></div>
+        <div class="report-stat report-profit ${report.profit >= 0 ? "positive" : "negative"}"><span>Чистый итог</span><strong>${sign}${money(Math.abs(report.profit))}</strong><small>прибыль за неделю</small></div>
+      </div>
+      <div class="report-insight"><span>✦</span><p><strong>Доля рынка:</strong> ${report.share.toFixed(1)}% (${report.shareChange >= 0 ? "+" : "−"}${Math.abs(report.shareChange).toFixed(2)} п.п.)${report.lost > 0 ? ` · <strong>Потеряно ${number(report.lost)} заказов</strong> — не хватило мощностей.` : ""}</p></div>
+    </section>`;
+  }
+
+  function renderLog(state) {
+    return `<section class="panel log-panel">
+      <div class="panel-heading"><div><div class="eyebrow">ЛЕНТА СОБЫТИЙ</div><h2>Что происходит в компании</h2></div></div>
+      <div class="log-list">${(state.log || []).map(item => `
+        <div class="log-item ${esc(item.tone)}"><span class="log-week">Н${String(item.week).padStart(2, "0")}</span><p>${esc(item.text)}</p></div>`).join("")}
+      </div>
+    </section>`;
+  }
+
+  function teamMemberCard(member) {
     const role = roleById(member.role);
     const moraleTone = member.morale >= 65 ? "good" : member.morale >= 40 ? "mid" : "low";
     return `<article class="member-card">
@@ -1073,7 +1349,7 @@
 
   function projectCard(state, project) {
     const active = state.activeProjects.find(item => item.id === project.id);
-    const done = state.completedProjects.includes(project.id);
+    const done = !project.isExpansion && state.completedProjects.includes(project.id);
     const missing = project.requires.filter(id => !state.completedTechs.includes(id));
     const cost = project.isExpansion ? STAGES[state.stage].expandCost : project.cost;
     const isExpansion = project.isExpansion;
@@ -1114,9 +1390,11 @@
     const nextStage = STAGES[state.stage + 1];
     const whCost = 26000 + state.warehouseLevel * 16000;
     const courierCost = 9000 + Math.max(0, state.couriers - 2) * 3500;
-    return `${pageHeading("КОНКУРЕНТНАЯ БОРЬБА", "Рынок", "Следите за конкурентами, настраивайте комиссию, запускайте рекламу и готовьте экспансию на новые рынки.", `<button class="primary-button" data-action="START_CAMPAIGN" ${state.marketingWeeksLeft > 0 ? "disabled" : ""}>${state.marketingWeeksLeft > 0 ? `Кампания · ${state.marketingWeeksLeft} нед.` : "Реклама · 12 000 ₽"}</button>`)}
+    const pulsePct = ((state.marketPulse - 1) * 100);
+    const gambleReady = state.week - state.gambleWeek >= 2;
+    return `${pageHeading("КОНКУРЕНТНАЯ БОРЬБА", "Рынок", "Конкуренты не дремлют: следите за долями, берите финансирование, рискованные ставки и готовьте экспансию.", `<button class="primary-button" data-action="START_CAMPAIGN" ${state.marketingWeeksLeft > 0 ? "disabled" : ""}>${state.marketingWeeksLeft > 0 ? `Кампания · ${state.marketingWeeksLeft} нед.` : "Реклама · 12 000 ₽"}</button>`)}
       <section class="panel market-share-panel">
-        <div class="panel-heading"><div><div class="eyebrow">КАРТА РЫНКА</div><h2>${esc(STAGES[state.stage].name)} · ${money(STAGES[state.stage].market * avgOrder(state))} оборот в неделю</h2></div><span class="period-chip">ВАША ДОЛЯ ${state.share.toFixed(1)}%</span></div>
+        <div class="panel-heading"><div><div class="eyebrow">КАРТА РЫНКА</div><h2>${esc(STAGES[state.stage].name)} · ${money(STAGES[state.stage].market * avgOrder(state))} оборот в неделю</h2></div><span class="period-chip">РЫНОК ${pulsePct >= 0 ? "+" : "−"}${Math.abs(pulsePct).toFixed(0)}% · ДОЛЯ ${state.share.toFixed(1)}%</span></div>
         <div class="share-bar">${shares.map((item, index) => `<div class="share-segment ${item.you ? "you" : ["", "seg-a", "seg-b", "seg-c"][Math.min(index, 3)]}" style="width:${clamp(item.share, 2, 100)}%" title="${esc(item.name)}: ${item.share.toFixed(1)}%"><span>${item.share >= 7 ? esc(item.name) : ""}</span></div>`).join("")}</div>
         <div class="share-legend">${shares.map(item => `<span><i class="${item.you ? "you" : ""}"></i>${esc(item.name)} — ${item.share.toFixed(1)}%</span>`).join("")}</div>
       </section>
@@ -1140,12 +1418,42 @@
         </article>
       </section>
 
+      <section class="panel finance-panel">
+        <div class="panel-heading"><div><div class="eyebrow">ФИНАНСИРОВАНИЕ</div><h2>Кредиты и займы</h2></div><span class="period-chip">ПЛАТЕЖИ ${money(weeklyLoanPayments(state))}/НЕД</span></div>
+        <p class="muted-copy">Деньги сейчас — против регулярных платежей. Кредиты помогут пережить кризис или сделать рывок, но три недели с отрицательным балансом — банкротство.</p>
+        <div class="loan-grid">${LOANS.map(loan => {
+          const active = state.loans.some(item => item.id === loan.id);
+          const blocked = state.loans.length >= 2 || state.share < loan.minShare;
+          return `<article class="loan-card ${active ? "is-active" : ""}">
+            <div class="loan-head"><span class="project-icon">${loan.icon}</span><strong>${loan.name}</strong>${active ? `<span class="tiny-tag">АКТИВЕН</span>` : ""}</div>
+            <div class="loan-sum">${money(loan.amount)}</div>
+            <p>${esc(loan.desc)}</p>
+            <div class="loan-terms">Платёж <strong>${money(loan.weekly)}</strong> × ${loan.weeks} нед. · всего ${money(loan.weekly * loan.weeks)}</div>
+            <button class="wide-button" data-action="TAKE_LOAN" data-id="${loan.id}" ${active || blocked ? "disabled" : ""}>${active ? "Уже взят" : loan.minShare > state.share ? `Нужно ${loan.minShare}% доли` : "Взять кредит"} <span>→</span></button>
+          </article>`;
+        }).join("")}</div>
+      </section>
+
+      <section class="panel gamble-panel">
+        <div class="panel-heading"><div><div class="eyebrow">АЗАРТ</div><h2>Рискованные ставки</h2></div><span class="period-chip ${gambleReady ? "" : "dim"}">${gambleReady ? "ГОТОВЫ К ИГРЕ" : `ПАУЗА · ${2 - (state.week - state.gambleWeek)} НЕД.`}</span></div>
+        <p class="muted-copy">Хотите испытать удачу? Ставка списывается сразу, исход зависит от шанса. Азарт хорош с холодной головой.</p>
+        <div class="gamble-grid">${GAMBLERS.map(gamble => {
+          const canPlay = gambleReady && state.cash >= gamble.stake;
+          return `<article class="gamble-card">
+            <div class="loan-head"><span class="project-icon gold">${gamble.icon}</span><strong>${gamble.name}</strong><span class="chance-badge">${Math.round(gamble.p * 100)}% удачи</span></div>
+            <p>${esc(gamble.desc)}</p>
+            <div class="gamble-terms"><span>Ставка <strong>${money(gamble.stake)}</strong></span><span class="win">Успех: ${esc(gamble.okText)}</span><span class="lose">Провал: ${esc(gamble.failText)}</span></div>
+            <button class="wide-button risk" data-action="TAKE_GAMBLE" data-id="${gamble.id}" ${canPlay ? "" : "disabled"}>Сделать ставку <span>→</span></button>
+          </article>`;
+        }).join("")}</div>
+      </section>
+
       ${nextStage ? `<section class="panel expansion-panel">
         <div class="panel-heading"><div><div class="eyebrow">ЭКСПАНСИЯ</div><h2>Следующий рынок: ${esc(nextStage.name)}</h2></div><span class="period-chip">ОБОРОТ ×${(nextStage.market / STAGES[state.stage].market).toFixed(1)}</span></div>
-        <p class="muted-copy">Чтобы выйти на новый рынок, нужно 15% доли и проект «Экспансия» (4 недели, ${money(nextStage.expandCost === 0 ? 0 : STAGES[state.stage].expandCost)}). Сейчас ваша доля: ${state.share.toFixed(1)}%.</p>
+        <p class="muted-copy">Чтобы выйти на новый рынок, нужно 15% доли и проект «Экспансия» (4 недели, ${money(STAGES[state.stage].expandCost)}). Сейчас ваша доля: ${state.share.toFixed(1)}%. Победа ждёт на международном рынке: 22% доли и 250 000 ₽.</p>
         <div class="capacity-progress"><div style="width:${clamp(state.share / 15 * 100, 0, 100)}%"></div></div>
         <div class="capacity-labels"><span>Готовность к экспансии</span><strong>${Math.min(100, Math.round(state.share / 15 * 100))}%</strong></div>
-      </section>` : `<section class="panel expansion-panel"><div class="panel-heading"><div><div class="eyebrow">ФИНАЛ</div><h2>Международный рынок</h2></div></div><p class="muted-copy">Вы возглавляете крупнейший рынок. Развивайте компанию дальше: цели, технологии и рекордные показатели.</p></section>`}`;
+      </section>` : `<section class="panel expansion-panel"><div class="panel-heading"><div><div class="eyebrow">ФИНАЛ</div><h2>Международный рынок</h2></div></div><p class="muted-copy">Вы возглавляете крупнейший рынок. Цель победы: доля 22% и касса 250 000 ₽. Удачи!</p></section>`}`;
   }
 
   function renderEventModal(state) {
@@ -1160,7 +1468,7 @@
         <h2>${esc(event.title)}</h2>
         <p class="event-text">${esc(event.text)}</p>
         <div class="event-choices">${event.choices.map((choice, index) => `
-          <button class="event-choice" data-action="EVENT_CHOICE" data-index="${index}">
+          <button class="event-choice ${choice.chance ? "risky" : ""}" data-action="EVENT_CHOICE" data-index="${index}">
             <strong>${esc(choice.label)}</strong>
             <span>${esc(choice.hint)}</span>
           </button>`).join("")}
@@ -1170,6 +1478,9 @@
   }
 
   function render(state) {
+    if (state.phase === "menu") return renderMenu(state);
+    if (state.phase === "gameover") return renderEndScreen(state, false);
+    if (state.phase === "victory") return renderEndScreen(state, true);
     let content;
     switch (state.activeView) {
       case "team": content = renderTeam(state); break;
