@@ -236,6 +236,23 @@
   const FIRST_NAMES = ["Антон", "Марина", "Илья", "Ксения", "Дмитрий", "Ольга", "Роман", "Алина", "Павел", "Юлия", "Никита", "Ева", "Артём", "Полина", "Максим", "Дарья", "Сергей", "Вера"];
   const COMPETITOR_NAMES = ["МаркетПро", "БыстроМаркет", "Торговый Дом"];
 
+  const ACHIEVEMENTS = [
+    { id: "first_week", icon: "◷", name: "Первая смена", desc: "Закрыть первую неделю", check: s => s.stats.weeksPlayed >= 1 },
+    { id: "cash100", icon: "₽", name: "Первая сотня", desc: "Касса 100 000 ₽", check: s => s.cash >= 100000 },
+    { id: "cash500", icon: "💰", name: "Полмиллиона", desc: "Касса 500 000 ₽", check: s => s.cash >= 500000 },
+    { id: "share10", icon: "↗", name: "Серьёзный игрок", desc: "Доля рынка 10%", check: s => s.share >= 10 },
+    { id: "share25", icon: "🏆", name: "Четверть рынка", desc: "Доля рынка 25%", check: s => s.share >= 25 },
+    { id: "team5", icon: "♙", name: "Большая команда", desc: "5 сотрудников", check: s => s.team.length >= 5 },
+    { id: "tech_all", icon: "⌘", name: "Технологический лидер", desc: "Изучить все 12 технологий", check: s => s.completedTechs.length >= 12 },
+    { id: "project_all", icon: "▤", name: "Мастер проектов", desc: "Завершить 6 проектов", check: s => s.completedProjects.length >= 6 },
+    { id: "gambler3", icon: "🎲", name: "Азартный игрок", desc: "Выиграть 3 ставки", check: s => s.stats.gamblesWon >= 3 },
+    { id: "lucky", icon: "⚡", name: "Фаворит фортуны", desc: "Выиграть ставку с шансом 45% или ниже", check: s => s.stats.luckyWin },
+    { id: "eventful", icon: "✦", name: "Холодная голова", desc: "Решить 10 событий", check: s => s.stats.eventsResolved >= 10 },
+    { id: "debt_free", icon: "🕊", name: "Без долгов", desc: "Взять кредит и полностью его погасить", check: s => s.stats.loansTaken >= 1 && s.loans.length === 0 },
+    { id: "marathon", icon: "◷", name: "Марафонец", desc: "Дожить до 30-й недели", check: s => s.week >= 30 },
+    { id: "victory", icon: "👑", name: "Легенда рынка", desc: "Победить в игре", check: s => s.phase === "victory" }
+  ];
+
   // ============================== УТИЛИТЫ ==============================
 
   const money = value => `${new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 }).format(Math.round(value))} ₽`;
@@ -296,6 +313,10 @@
       gambleWeek: -9,
       goalsDone: [],
       goalsMissed: [],
+      achievements: [],
+      muted: false,
+      floatFx: null,
+      stats: { weeksPlayed: 0, bestWeekProfit: 0, totalRevenue: 0, gamblesWon: 0, gamblesPlayed: 0, eventsResolved: 0, loansTaken: 0, luckyWin: false },
       bankruptcyWeeks: 0,
       bestCash: 30000,
       bestShare: 4,
@@ -459,6 +480,21 @@
     return next;
   }
 
+  // ============================== ДОСТИЖЕНИЯ ==============================
+
+  function checkAchievements(state) {
+    const unlocked = new Set(state.achievements || []);
+    const fresh = ACHIEVEMENTS.filter(item => !unlocked.has(item.id) && item.check(state));
+    if (!fresh.length) return state.achievements ? state : { ...state, achievements: [] };
+    const names = fresh.map(item => `«${item.name}»`).join(", ");
+    const next = {
+      ...state,
+      achievements: [...(state.achievements || []), ...fresh.map(item => item.id)],
+      notice: `${state.notice ? `${state.notice} ` : ""}🏅 Достижение: ${names}!`
+    };
+    return pushLog(next, `🏅 Открыто достижение: ${names}.`, "good");
+  }
+
   // ============================== СОБЫТИЯ И ЭФФЕКТЫ ==============================
 
   function applyEffects(state, effects) {
@@ -478,9 +514,11 @@
 
   // ============================== REDUCER ==============================
 
-  function reducer(state, action, payload = {}) {
+  function gameReducer(state, action, payload = {}) {
     if (action === "CLEAR_NOTICE") return { ...state, notice: "" };
     if (action === "SHOW_NOTICE") return { ...state, notice: String(payload.text || "") };
+
+    if (action === "TOGGLE_MUTE") return { ...state, muted: !state.muted };
 
     if (action === "SET_DIFFICULTY") {
       return { ...state, difficulty: diffById(payload.id).id };
@@ -529,22 +567,26 @@
       const choice = event.choices[Number(payload.index) || 0];
       if (!choice) return state;
       let next = { ...state, event: null };
+      next = { ...next, stats: { ...next.stats, eventsResolved: (next.stats.eventsResolved || 0) + 1 } };
       if (choice.chance) {
         const roll = Math.random();
         if (roll < choice.chance.p) {
           next = applyEffects(next, choice.chance.ok || {});
           next = pushLog(next, `«${event.title}»: ${choice.label} — удача! ${choice.chance.okText}`, "good");
           next.notice = `Удача на вашей стороне: ${choice.chance.okText}`;
+          next.floatFx = { text: choice.chance.okText, tone: "good" };
         } else {
           next = applyEffects(next, choice.chance.fail || {});
           next = pushLog(next, `«${event.title}»: ${choice.label} — не вышло. ${choice.chance.failText}`, "bad");
           next.notice = `Риск не оправдался: ${choice.chance.failText}`;
+          next.floatFx = { text: choice.chance.failText, tone: "bad" };
         }
       } else {
         next = applyEffects(next, choice.effects || {});
         const moneyHint = choice.effects && choice.effects.cash ? ` (${money(choice.effects.cash)})` : "";
         next = pushLog(next, `Событие «${event.title}»: ${choice.label}${moneyHint}.`, "event");
         next.notice = `Решение принято: ${choice.label}.`;
+        if (choice.effects && choice.effects.cash) next.floatFx = { text: `${choice.effects.cash > 0 ? "+" : "−"}${money(Math.abs(choice.effects.cash))}`, tone: choice.effects.cash > 0 ? "good" : "bad" };
       }
       return awardGoals(next);
     }
@@ -559,6 +601,7 @@
         ...state,
         cash: state.cash + loan.amount,
         loans: [...state.loans, { id: loan.id, weekly: loan.weekly, weeksLeft: loan.weeks }],
+        stats: { ...state.stats, loansTaken: (state.stats.loansTaken || 0) + 1 },
         notice: `${loan.name}: +${money(loan.amount)} на счёт. Платёж ${money(loan.weekly)} еженедельно, ${loan.weeks} нед.`
       }, `Взят ${loan.name.toLowerCase()} на ${money(loan.amount)}.`, "event");
     }
@@ -569,15 +612,19 @@
       if (state.week - state.gambleWeek < 2) return { ...state, notice: `Ставки доступны раз в две недели. Подождите ещё ${2 - (state.week - state.gambleWeek)} нед.` };
       if (state.cash < gamble.stake) return { ...state, notice: `Не хватает средств: ставка ${money(gamble.stake)}.` };
       let next = { ...state, cash: state.cash - gamble.stake, gambleWeek: state.week };
+      next = { ...next, stats: { ...next.stats, gamblesPlayed: (next.stats.gamblesPlayed || 0) + 1 } };
       const win = Math.random() < gamble.p;
       if (win) {
         next = applyEffects(next, gamble.ok || {});
         next = pushLog(next, `Ставка «${gamble.name}» сыграла! ${gamble.okText}.`, "good");
         next.notice = `Азарт вознаграждён: ${gamble.okText}!`;
+        next.floatFx = { text: gamble.okText, tone: "good" };
+        next.stats = { ...next.stats, gamblesWon: (next.stats.gamblesWon || 0) + 1, luckyWin: next.stats.luckyWin || gamble.p <= 0.45 };
       } else {
         next = applyEffects(next, gamble.fail || {});
         next = pushLog(next, `Ставка «${gamble.name}» не сыграла. ${gamble.failText}.`, "bad");
         next.notice = `Не повезло: ${gamble.failText}.`;
+        next.floatFx = { text: gamble.failText, tone: "bad" };
       }
       return awardGoals(next);
     }
@@ -841,10 +888,10 @@
       }
 
       // --- конкуренты: дрейф весов ---
-      const competitors = state.competitors.map(competitor => ({
-        ...competitor,
-        weight: clamp(competitor.weight * (0.97 + Math.random() * 0.06), 0.1, 1)
-      }));
+      const competitors = state.competitors.map(competitor => {
+        const weight = clamp(competitor.weight * (0.97 + Math.random() * 0.06), 0.1, 1);
+        return { ...competitor, weight, mood: weight >= competitor.weight ? "up" : "down" };
+      });
 
       // --- событие недели ---
       let event = null;
@@ -858,6 +905,12 @@
       const tempDemandAfter = bonusDemand
         ? { weeks: Math.max(state.tempDemand.weeks, bonusDemand.weeks), mult: state.tempDemand.mult + bonusDemand.mult }
         : (state.tempDemand.weeks > 0 ? { weeks: state.tempDemand.weeks - 1, mult: state.tempDemand.mult } : state.tempDemand);
+      const statsAfter = {
+        ...state.stats,
+        weeksPlayed: (state.stats.weeksPlayed || 0) + 1,
+        bestWeekProfit: Math.max(state.stats.bestWeekProfit || 0, profit),
+        totalRevenue: (state.stats.totalRevenue || 0) + revenue
+      };
 
       const report = {
         week: state.week,
@@ -887,6 +940,8 @@
         marketingWeeksLeft: Math.max(0, state.marketingWeeksLeft - 1),
         tempDemand: tempDemandAfter,
         bankruptcyWeeks,
+        stats: statsAfter,
+        floatFx: { text: `${profit >= 0 ? "+" : "−"}${money(Math.abs(profit))}`, tone: profit >= 0 ? "good" : "bad" },
         bestCash: Math.max(state.bestCash || 0, cashAfter),
         bestShare: Math.max(state.bestShare || 0, shareAfter),
         lastReport: report,
@@ -919,6 +974,12 @@
     }
 
     return state;
+  }
+
+  function reducer(state, action, payload = {}) {
+    const next = gameReducer(state, action, payload);
+    if (!next || next === state) return next;
+    return checkAchievements(next);
   }
 
   // ============================== UI: ОБЩЕЕ ==============================
@@ -967,9 +1028,11 @@
             ${debt ? `<span class="city-pill debt-pill"><span class="city-dot debt"></span>ДОЛГ ${money(debt)}/НЕД</span>` : ""}
             <span class="city-pill"><span class="city-dot"></span>${esc(STAGES[state.stage].name.toUpperCase())} · ${esc(diff.name.toUpperCase())}</span>
             <span class="day-pill">НЕДЕЛЯ ${String(state.week).padStart(2, "0")}</span>
+            <button class="topbar-tool" data-action="TOGGLE_MUTE" title="${state.muted ? "Включить звук" : "Выключить звук"}" aria-label="${state.muted ? "Включить звук" : "Выключить звук"}"><span class="tool-icon">${state.muted ? "🔇" : "🔊"}</span></button>
             <div class="profile-avatar">Л</div>
           </div>
         </header>
+        ${state.floatFx ? `<div class="float-fx ${esc(state.floatFx.tone)}" aria-hidden="true">${esc(state.floatFx.text)}</div>` : ""}
         <div class="page-content">
           ${state.bankruptcyWeeks > 0 ? `<div class="notice danger-notice" role="alert"><span class="notice-symbol">⚠</span><p><strong>Касса в минусе!</strong> Если баланс не восстановится за ${3 - state.bankruptcyWeeks} нед. — компания обанкротится.</p></div>` : ""}
           ${state.notice ? `<div class="notice" role="status"><span class="notice-symbol">✦</span><p>${esc(state.notice)}</p><button data-action="CLEAR_NOTICE" aria-label="Закрыть уведомление">×</button></div>` : ""}
@@ -1208,8 +1271,24 @@
       </section>` : ""}
 
       ${renderGoals(state)}
+      ${renderAchievements(state)}
       ${renderReport(state)}
       ${renderLog(state)}`;
+  }
+
+  function renderAchievements(state) {
+    const unlocked = new Set(state.achievements || []);
+    return `<section class="objectives-section">
+      <div class="section-heading"><div><div class="eyebrow">НАГРАДЫ</div><h2>Достижения</h2></div><span>${unlocked.size} / ${ACHIEVEMENTS.length} открыто</span></div>
+      <div class="achievements-grid">${ACHIEVEMENTS.map(item => {
+        const isDone = unlocked.has(item.id);
+        return `<article class="achievement-card ${isDone ? "is-unlocked" : ""}">
+          <span class="achievement-icon">${isDone ? item.icon : "?"}</span>
+          <div><h3>${esc(item.name)}</h3><p>${esc(item.desc)}</p></div>
+          ${isDone ? `<span class="achievement-check">✓</span>` : ""}
+        </article>`;
+      }).join("")}</div>
+    </section>`;
   }
 
   function renderGoals(state) {
@@ -1397,6 +1476,35 @@
         <div class="panel-heading"><div><div class="eyebrow">КАРТА РЫНКА</div><h2>${esc(STAGES[state.stage].name)} · ${money(STAGES[state.stage].market * avgOrder(state))} оборот в неделю</h2></div><span class="period-chip">РЫНОК ${pulsePct >= 0 ? "+" : "−"}${Math.abs(pulsePct).toFixed(0)}% · ДОЛЯ ${state.share.toFixed(1)}%</span></div>
         <div class="share-bar">${shares.map((item, index) => `<div class="share-segment ${item.you ? "you" : ["", "seg-a", "seg-b", "seg-c"][Math.min(index, 3)]}" style="width:${clamp(item.share, 2, 100)}%" title="${esc(item.name)}: ${item.share.toFixed(1)}%"><span>${item.share >= 7 ? esc(item.name) : ""}</span></div>`).join("")}</div>
         <div class="share-legend">${shares.map(item => `<span><i class="${item.you ? "you" : ""}"></i>${esc(item.name)} — ${item.share.toFixed(1)}%</span>`).join("")}</div>
+      </section>
+
+      <section class="panel rivals-panel">
+        <div class="panel-heading"><div><div class="eyebrow">КОНКУРЕНТЫ</div><h2>Кто рядом с вами</h2></div><span class="period-chip">ОНИ НЕ ДРЁМЛЮТ</span></div>
+        <div class="rival-grid">${state.competitors.map((competitor, index) => {
+          const rest = Math.max(0, 100 - state.share);
+          const totalWeight = state.competitors.reduce((sum, item) => sum + item.weight, 0) || 1;
+          const shareValue = rest * competitor.weight / totalWeight;
+          const mood = competitor.mood || "flat";
+          return `<article class="rival-card">
+            <div class="rival-top"><span class="rival-avatar">${esc(competitor.name.slice(0, 1))}</span>
+              <div><h3>${esc(competitor.name)}</h3><span class="rival-mood ${esc(mood)}">${mood === "up" ? "↗ растёт" : mood === "down" ? "↘ слабеет" : "→ стабилен"}</span></div>
+            </div>
+            <div class="rival-share">${shareValue.toFixed(1)}<small>% рынка</small></div>
+            <div class="small-progress"><div class="rival-fill" style="width:${clamp(shareValue, 0, 100)}%"></div></div>
+          </article>`;
+        }).join("")}</div>
+      </section>
+
+      <section class="panel stats-panel">
+        <div class="panel-heading"><div><div class="eyebrow">ХРОНИКИ</div><h2>Статистика компании</h2></div><span class="period-chip">ЗА ВСЮ ИГРУ</span></div>
+        <div class="stats-grid">
+          <div class="stat-tile"><span>Недель прожито</span><strong>${state.stats.weeksPlayed || 0}</strong></div>
+          <div class="stat-tile"><span>Лучшая неделя</span><strong>${money(state.stats.bestWeekProfit || 0)}</strong></div>
+          <div class="stat-tile"><span>Вся выручка</span><strong>${money(state.stats.totalRevenue || 0)}</strong></div>
+          <div class="stat-tile"><span>Ставки</span><strong>${state.stats.gamblesWon || 0} / ${state.stats.gamblesPlayed || 0} выиграно</strong></div>
+          <div class="stat-tile"><span>Событий решено</span><strong>${state.stats.eventsResolved || 0}</strong></div>
+          <div class="stat-tile"><span>Кредитов взято</span><strong>${state.stats.loansTaken || 0}</strong></div>
+        </div>
       </section>
 
       <section class="market-grid">
