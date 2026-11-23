@@ -797,24 +797,82 @@
     return `<div class="page-heading"><div><div class="eyebrow">${kicker}</div><h1>${title}</h1><p>${description}</p></div>${action ? `<div class="heading-action">${action}</div>` : ""}</div>`;
   }
 
-  function metricCard(icon, label, value, note, tone = "green") {
-    return `<article class="metric-card"><div class="metric-top"><span class="metric-icon ${tone}">${icon}</span><span class="metric-note">${note}</span></div><div class="metric-label">${label}</div><div class="metric-value">${value}</div></article>`;
+  function metricCard(icon, label, value, note, tone = "green", sparkValues = null) {
+    return `<article class="metric-card tone-${tone}"><div class="metric-top"><span class="metric-icon ${tone}">${icon}</span><span class="metric-note">${note}</span></div><div class="metric-label">${label}</div><div class="metric-value">${value}</div>${sparkValues && sparkValues.length > 1 ? `<div class="metric-spark">${sparkline(sparkValues)}</div>` : ""}</article>`;
+  }
+
+  function sparkline(values) {
+    const w = 120, h = 30, pad = 3;
+    const max = Math.max(...values, 1);
+    const min = Math.min(...values, 0);
+    const range = Math.max(1, max - min);
+    const pts = values.map((value, index) => [
+      values.length > 1 ? index * (w / (values.length - 1)) : w / 2,
+      h - pad - ((value - min) / range) * (h - pad * 2)
+    ]);
+    const path = pts.map((point, index) => `${index ? "L" : "M"}${point[0].toFixed(1)},${point[1].toFixed(1)}`).join(" ");
+    return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">
+      <path d="${path} L${w},${h} L0,${h} Z" fill="rgba(108,77,255,0.09)" stroke="none"/>
+      <path d="${path}" fill="none" stroke="rgba(108,77,255,0.75)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>`;
+  }
+
+  function renderRing(percent, centerValue, centerLabel) {
+    const radius = 62, circumference = 2 * Math.PI * radius;
+    const offset = circumference * (1 - clamp(percent, 0, 100) / 100);
+    return `<div class="ring-wrap"><div class="ring-holder">
+      <svg class="ring-svg" viewBox="0 0 158 158" aria-hidden="true">
+        <defs>
+          <linearGradient id="ringGradient" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#2dd4a7"/><stop offset="1" stop-color="#6c4dff"/>
+          </linearGradient>
+        </defs>
+        <circle class="ring-track" cx="79" cy="79" r="${radius}"/>
+        <circle class="ring-value" cx="79" cy="79" r="${radius}"
+          style="stroke-dasharray:${circumference.toFixed(1)};stroke-dashoffset:${offset.toFixed(1)};--ring-len:${circumference.toFixed(1)}"/>
+      </svg>
+      <div class="ring-center"><strong>${centerValue}</strong><span>${centerLabel}</span></div>
+    </div></div>`;
   }
 
   function renderChart(state) {
     const values = state.history.slice(-7);
     const hasData = values.length > 0;
-    const padded = Array(Math.max(0, 7 - values.length)).fill(null).concat(values);
-    const max = Math.max(1, ...padded.map(item => item ? item.revenue : 0));
+    const W = 560, H = 196, padX = 16, padTop = 14, padBottom = 30;
+    const revenues = values.map(item => item.revenue);
+    const max = Math.max(...revenues, 1);
+    const step = values.length > 1 ? (W - padX * 2) / (values.length - 1) : 0;
+    const points = values.map((item, index) => [
+      values.length > 1 ? padX + index * step : W / 2,
+      padTop + (1 - item.revenue / max) * (H - padTop - padBottom)
+    ]);
+    const linePath = points.map((point, index) => `${index ? "L" : "M"}${point[0].toFixed(1)},${point[1].toFixed(1)}`).join(" ");
+    const areaPath = points.length
+      ? `${linePath} L${points[points.length - 1][0].toFixed(1)},${H - padBottom} L${points[0][0].toFixed(1)},${H - padBottom} Z`
+      : "";
+    const grid = [0, 1, 2].map(index => {
+      const y = padTop + index * ((H - padTop - padBottom) / 2);
+      return `<line class="grid-line" x1="${padX}" y1="${y}" x2="${W - padX}" y2="${y}"/>`;
+    }).join("");
     return `<div class="chart-wrap">
       ${!hasData ? `<div class="chart-empty"><span>↗</span><strong>Пока нет статистики</strong><p>Завершите первую неделю — и здесь появится выручка.</p></div>` : ""}
-      <div class="chart-grid-lines"><i></i><i></i><i></i></div>
-      <div class="chart-bars">${padded.map((item, index) => {
-        const revenue = item ? item.revenue : 0;
-        const height = hasData ? Math.max(7, Math.round(revenue / max * 100)) : 5;
-        const label = item ? `Н${item.week}` : "";
-        return `<div class="chart-column"><div class="chart-track"><div class="chart-bar ${hasData && item ? "" : "empty"}" style="height:${height}%" title="${item ? `${money(item.revenue)} · прибыль ${money(item.profit)}` : ""}"></div></div><span>${label}</span></div>`;
-      }).join("")}</div>
+      <svg class="chart-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-label="Выручка по неделям">
+        <defs>
+          <linearGradient id="chartLine" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0" stop-color="#6c4dff"/><stop offset="1" stop-color="#8b5cf6"/>
+          </linearGradient>
+          <linearGradient id="chartArea" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="rgba(108,77,255,0.28)"/><stop offset="1" stop-color="rgba(108,77,255,0.01)"/>
+          </linearGradient>
+        </defs>
+        ${grid}
+        ${hasData ? `
+          <path class="area-fill" d="${areaPath}" fill="url(#chartArea)" stroke="none"/>
+          <path class="line-path" d="${linePath}"/>
+          ${points.map((point, index) => `<circle class="point-dot ${index === points.length - 1 ? "last" : ""}" cx="${point[0].toFixed(1)}" cy="${point[1].toFixed(1)}" r="${index === points.length - 1 ? 5.5 : 4}"><title>Неделя ${values[index].week}: ${money(values[index].revenue)}</title></circle>`).join("")}
+          ${values.map((item, index) => `<text class="bar-label" x="${points[index][0].toFixed(1)}" y="${H - 8}" text-anchor="middle">Н${item.week}</text>`).join("")}
+        ` : ""}
+      </svg>
     </div>`;
   }
 
@@ -890,11 +948,11 @@
       </section>
 
       <section class="metrics-grid" aria-label="Показатели компании">
-        ${metricCard("₽", "Касса", money(state.cash), latest ? `${latest.profit >= 0 ? "+" : "−"}${money(Math.abs(latest.profit))} за неделю` : "Стартовый капитал", "green")}
-        ${metricCard("↗", "Доля рынка", `${state.share.toFixed(1)}<small>%</small>`, shares[1] ? `Лидер: ${shares.slice(1).sort((a, b) => b.share - a.share)[0].name}` : "", "lime")}
+        ${metricCard("₽", "Касса", money(state.cash), latest ? `${latest.profit >= 0 ? "+" : "−"}${money(Math.abs(latest.profit))} за неделю` : "Стартовый капитал", "green", state.history.map(item => item.profit))}
+        ${metricCard("↗", "Доля рынка", `${state.share.toFixed(1)}<small>%</small>`, shares[1] ? `Лидер: ${shares.slice(1).sort((a, b) => b.share - a.share)[0].name}` : "", "lime", state.history.map(item => item.share))}
         ${metricCard("♙", "Команда", `${state.team.length} <small>чел.</small>`, `Мораль: ${Math.round(state.team.reduce((s, m) => s + m.morale, 0) / Math.max(1, state.team.length))}%`, "peach")}
         ${metricCard("⌘", "Очки науки", `${number(state.researchPoints)} <small>RP</small>`, `+${researchPerWeek(state)} в неделю`, "lavender")}
-        ${metricCard("✦", "Репутация", `${Math.round(state.reputation)}<small> / 100</small>`, state.reputation >= 75 ? "Покупатели доверяют вам" : "Растёт с качеством доставки", "lavender")}
+        ${metricCard("✦", "Репутация", `${Math.round(state.reputation)}<small> / 100</small>`, state.reputation >= 75 ? "Покупатели доверяют вам" : "Растёт с качеством доставки", "mint")}
       </section>
 
       <section class="dashboard-grid">
@@ -907,8 +965,7 @@
           <div class="panel-heading"><div><div class="eyebrow">ОПЕРАЦИИ</div><h2>План на неделю</h2></div><span class="mini-status"><i></i> В работе</span></div>
           <div class="demand-number">${number(forecast)} <span>заказов</span></div>
           <p class="muted-copy">Мощность системы — ${number(cap)} заказов в неделю.</p>
-          <div class="capacity-progress"><div style="width:${capacityFill}%"></div></div>
-          <div class="capacity-labels"><span>Нагрузка на логистику</span><strong>${capacityFill}%</strong></div>
+          ${renderRing(capacityFill, `${capacityFill}%`, "ЗАГРУЗКА")}
           ${cap < forecast ? `<div class="warning-inline">⚠ Не хватает мощности: часть заказов будет потеряна.</div>` : `<div class="success-inline">✓ Склад и курьеры справятся с прогнозом.</div>`}
           <div class="demand-divider"></div>
           <div class="demand-details"><span>Склад <strong>${warehouseCapacity(state)} / нед</strong></span><span>Курьеры <strong>${courierCapacity(state)} / нед</strong></span><span>Комиссия <strong>${state.commission}%</strong></span></div>
@@ -938,7 +995,7 @@
         <div class="member-name-row"><h3>${esc(member.name)}</h3><span class="member-role">${esc(role.name)}</span></div>
         <div class="member-meta">${esc(role.effect)}</div>
         <div class="member-stats">
-          <span class="skill-pips" title="Навык ${member.skill}">${"◆".repeat(member.skill)}${"◇".repeat(Math.max(0, 8 - member.skill))}</span>
+          <span class="skill-pips" title="Навык ${member.skill}">${"◆".repeat(member.skill)}<span class="dim">${"◆".repeat(Math.max(0, 8 - member.skill))}</span></span>
           <span class="member-salary">${money(member.salary)} / нед</span>
         </div>
         <div class="morale-row"><span>Мораль</span><div class="morale-track"><div class="${moraleTone}" style="width:${member.morale}%"></div></div><strong>${Math.round(member.morale)}%</strong></div>
@@ -975,7 +1032,7 @@
             <h3>${esc(candidate.name)}</h3>
             <div class="candidate-role">${esc(role.name)}</div>
             <p class="candidate-effect">${esc(role.effect)}</p>
-            <div class="candidate-stats"><span>Навык ${"◆".repeat(candidate.skill)}${"◇".repeat(Math.max(0, 8 - candidate.skill))}</span><strong>${money(candidate.salary)} / нед</strong></div>
+            <div class="candidate-stats"><span>Навык ${"◆".repeat(candidate.skill)}<span class="dim">${"◆".repeat(Math.max(0, 8 - candidate.skill))}</span></span><strong>${money(candidate.salary)} / нед</strong></div>
             <button class="wide-button" data-action="HIRE" data-id="${candidate.id}" ${canHire ? "" : "disabled"}>Нанять · ${money(candidate.salary * 2)} <span>→</span></button>
           </article>`;
         }).join("")}</div>
@@ -1060,7 +1117,7 @@
     return `${pageHeading("КОНКУРЕНТНАЯ БОРЬБА", "Рынок", "Следите за конкурентами, настраивайте комиссию, запускайте рекламу и готовьте экспансию на новые рынки.", `<button class="primary-button" data-action="START_CAMPAIGN" ${state.marketingWeeksLeft > 0 ? "disabled" : ""}>${state.marketingWeeksLeft > 0 ? `Кампания · ${state.marketingWeeksLeft} нед.` : "Реклама · 12 000 ₽"}</button>`)}
       <section class="panel market-share-panel">
         <div class="panel-heading"><div><div class="eyebrow">КАРТА РЫНКА</div><h2>${esc(STAGES[state.stage].name)} · ${money(STAGES[state.stage].market * avgOrder(state))} оборот в неделю</h2></div><span class="period-chip">ВАША ДОЛЯ ${state.share.toFixed(1)}%</span></div>
-        <div class="share-bar">${shares.map(item => `<div class="share-segment ${item.you ? "you" : ""}" style="width:${clamp(item.share, 2, 100)}%" title="${esc(item.name)}: ${item.share.toFixed(1)}%"><span>${item.share >= 7 ? esc(item.name) : ""}</span></div>`).join("")}</div>
+        <div class="share-bar">${shares.map((item, index) => `<div class="share-segment ${item.you ? "you" : ["", "seg-a", "seg-b", "seg-c"][Math.min(index, 3)]}" style="width:${clamp(item.share, 2, 100)}%" title="${esc(item.name)}: ${item.share.toFixed(1)}%"><span>${item.share >= 7 ? esc(item.name) : ""}</span></div>`).join("")}</div>
         <div class="share-legend">${shares.map(item => `<span><i class="${item.you ? "you" : ""}"></i>${esc(item.name)} — ${item.share.toFixed(1)}%</span>`).join("")}</div>
       </section>
 
