@@ -77,6 +77,12 @@
       case "END_WEEK":
         Sfx.play("week");
         if (after.lastReport && after.lastReport.profit > 0) setTimeout(() => Sfx.play("coin"), 380);
+        if (typeof document !== "undefined" && typeof requestAnimationFrame === "function") {
+          requestAnimationFrame(() => {
+            const el = document.getElementById("report");
+            if (el && el.scrollIntoView) el.scrollIntoView({ behavior: "smooth", block: "start" });
+          });
+        }
         break;
       case "TAKE_GAMBLE":
       case "EVENT_CHOICE":

@@ -3,7 +3,7 @@
  * Стратегия: сеть в приоритете (онлайн — всегда свежие файлы),
  * кэш — запасной вариант для офлайна. Старые версии кэша удаляются.
  */
-const CACHE_NAME = "svoi-market-pwa-v7";
+const CACHE_NAME = "svoi-market-pwa-v8";
 
 async function networkFirst(request) {
   const cache = await caches.open(CACHE_NAME);

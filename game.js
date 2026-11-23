@@ -408,6 +408,7 @@
       news: [],
       tutorialDismissed: false,
       helpOpen: false,
+      collapsed: { achievements: true, log: true },
       floatFx: null,
       stats: { weeksPlayed: 0, bestWeekProfit: 0, totalRevenue: 0, gamblesWon: 0, gamblesPlayed: 0, eventsResolved: 0, loansTaken: 0, luckyWin: false },
       bankruptcyWeeks: 0,
@@ -615,6 +616,13 @@
     if (action === "TOGGLE_THEME") return { ...state, theme: state.theme === "dark" ? "light" : "dark" };
     if (action === "TOGGLE_HELP") return { ...state, helpOpen: !state.helpOpen };
     if (action === "DISMISS_TUTORIAL") return { ...state, tutorialDismissed: true };
+    if (action === "TOGGLE_SECTION") {
+      const key = String(payload.key || "");
+      if (key !== "achievements" && key !== "log") return state;
+      const collapsed = { ...(state.collapsed || {}) };
+      collapsed[key] = collapsed[key] === false;
+      return { ...state, collapsed };
+    }
 
     if (action === "SET_DIFFICULTY") {
       return { ...state, difficulty: diffById(payload.id).id };
@@ -1125,7 +1133,7 @@
             <button class="topbar-tool" data-action="OPEN_TAB" title="Открыть игру в отдельной вкладке" aria-label="Открыть игру в отдельной вкладке"><span class="tool-icon">↗</span><span class="tool-label">В отдельную вкладку</span></button>
             <button class="topbar-tool fullscreen-tool" data-action="TOGGLE_FULLSCREEN" title="${fullscreenLabel}" aria-label="${fullscreenLabel}"><span class="tool-icon">⛶</span><span class="tool-label">${fullscreenLabel}</span></button>
             ${debt ? `<span class="city-pill debt-pill"><span class="city-dot debt"></span>ДОЛГ ${money(debt)}/НЕД</span>` : ""}
-            <span class="city-pill"><span class="city-dot"></span>${esc(STAGES[state.stage].name.toUpperCase())} · ${esc(diff.name.toUpperCase())}</span>
+            <span class="city-pill stage-chip"><span class="city-dot"></span>${esc(STAGES[state.stage].name.toUpperCase())} · ${esc(diff.name.toUpperCase())}</span>
             <span class="city-pill season-chip" title="Сезон влияет на спрос">${season.icon} ${esc(season.name.toUpperCase())}</span>
             <span class="day-pill">НЕДЕЛЯ ${String(state.week).padStart(2, "0")}</span>
             <button class="topbar-tool" data-action="TOGGLE_HELP" title="Правила и подсказки" aria-label="Правила и подсказки"><span class="tool-icon">❓</span></button>
@@ -1140,6 +1148,15 @@
           ${state.notice ? `<div class="notice" role="status"><span class="notice-symbol">✦</span><p>${esc(state.notice)}</p><button data-action="CLEAR_NOTICE" aria-label="Закрыть уведомление">×</button></div>` : ""}
           ${content}
           <footer class="page-footer"><span>СВОЙ МАРКЕТ · ТАЙКУН · ГЛУБОКАЯ СИМУЛЯЦИЯ</span><span>Игра сохраняется автоматически в этом браузере</span></footer>
+        </div>
+        <div class="action-dock" role="region" aria-label="Панель действий">
+          <div class="dock-stats">
+            <span class="dock-stat"><i>₽</i>${money(state.cash)}</span>
+            <span class="dock-stat"><i>↗</i>${state.share.toFixed(1)}%</span>
+            <span class="dock-stat"><i>✦</i>${Math.round(state.reputation)}</span>
+            ${state.event ? `<span class="dock-alert">⚡ Событие!</span>` : ""}
+          </div>
+          <button class="dock-button" data-action="END_WEEK">Завершить неделю <span>→</span></button>
         </div>
       </main>
     </div>`;
@@ -1347,43 +1364,48 @@
         ${metricCard("✦", "Репутация", `${Math.round(state.reputation)}<small> / 100</small>`, state.loans.length ? `Долг: ${money(totalDebt(state))}` : state.reputation >= 75 ? "Покупатели доверяют вам" : "Растёт с качеством доставки", "mint")}
       </section>
 
-      <section class="dashboard-grid">
-        <article class="panel chart-panel">
-          <div class="panel-heading"><div><div class="eyebrow">ФИНАНСЫ</div><h2>Выручка по неделям</h2></div><span class="period-chip">ПОСЛЕДНИЕ 7 НЕДЕЛЬ</span></div>
-          ${renderChart(state)}
-          <div class="panel-foot"><span><i class="legend-dot"></i> Выручка платформы</span><strong>${latest ? money(latest.revenue) : "—"}</strong></div>
-        </article>
-        <article class="panel demand-panel">
-          <div class="panel-heading"><div><div class="eyebrow">ОПЕРАЦИИ</div><h2>План на неделю</h2></div><span class="mini-status"><i></i> В работе</span></div>
-          <div class="demand-number">${number(forecast)} <span>заказов</span></div>
-          <p class="muted-copy">Мощность системы — ${number(cap)} заказов в неделю.</p>
-          ${renderRing(capacityFill, `${capacityFill}%`, "ЗАГРУЗКА")}
-          ${cap < forecast ? `<div class="warning-inline">⚠ Не хватает мощности: часть заказов будет потеряна.</div>` : `<div class="success-inline">✓ Склад и курьеры справятся с прогнозом.</div>`}
-          <div class="demand-divider"></div>
-          <div class="demand-details"><span>Склад <strong>${warehouseCapacity(state)} / нед</strong></span><span>Курьеры <strong>${courierCapacity(state)} / нед</strong></span><span>Комиссия <strong>${state.commission}%</strong></span></div>
-        </article>
-      </section>
-
-      ${state.activeProjects.length ? `<section class="panel projects-strip">
-        <div class="panel-heading"><div><div class="eyebrow">В РАБОТЕ</div><h2>Активные проекты</h2></div><button class="text-action" data-action="NAV" data-view="projects">Все проекты <span>→</span></button></div>
-        <div class="strip-items">${state.activeProjects.map(item => {
-          const project = projectById(item.id);
-          const fill = Math.round((item.weeksDone + 1) / item.weeksTotal * 100);
-          return `<div class="strip-item"><strong>${esc(project ? project.name : item.id)}</strong><div class="small-progress"><div style="width:${fill}%"></div></div><span>${item.weeksDone} / ${item.weeksTotal} нед.</span></div>`;
-        }).join("")}</div>
-      </section>` : ""}
-
-      ${renderGoals(state)}
-      ${renderAchievements(state)}
-      ${renderReport(state)}
-      ${renderLog(state)}`;
+      <div class="overview-grid">
+        <div class="overview-main">
+          ${renderReport(state)}
+          <article class="panel chart-panel">
+            <div class="panel-heading"><div><div class="eyebrow">ФИНАНСЫ</div><h2>Выручка по неделям</h2></div><span class="period-chip">ПОСЛЕДНИЕ 7 НЕДЕЛЬ</span></div>
+            ${renderChart(state)}
+            <div class="panel-foot"><span><i class="legend-dot"></i> Выручка платформы</span><strong>${latest ? money(latest.revenue) : "—"}</strong></div>
+          </article>
+          ${state.activeProjects.length ? `<section class="panel projects-strip">
+            <div class="panel-heading"><div><div class="eyebrow">В РАБОТЕ</div><h2>Активные проекты</h2></div><button class="text-action" data-action="NAV" data-view="projects">Все проекты <span>→</span></button></div>
+            <div class="strip-items">${state.activeProjects.map(item => {
+              const project = projectById(item.id);
+              const fill = Math.round((item.weeksDone + 1) / item.weeksTotal * 100);
+              return `<div class="strip-item"><strong>${esc(project ? project.name : item.id)}</strong><div class="small-progress"><div style="width:${fill}%"></div></div><span>${item.weeksDone} / ${item.weeksTotal} нед.</span></div>`;
+            }).join("")}</div>
+          </section>` : ""}
+        </div>
+        <div class="overview-side">
+          <article class="panel demand-panel">
+            <div class="panel-heading"><div><div class="eyebrow">ОПЕРАЦИИ</div><h2>План на неделю</h2></div><span class="mini-status"><i></i> В работе</span></div>
+            <div class="demand-number">${number(forecast)} <span>заказов</span></div>
+            <p class="muted-copy">Мощность системы — ${number(cap)} заказов в неделю.</p>
+            ${renderRing(capacityFill, `${capacityFill}%`, "ЗАГРУЗКА")}
+            ${cap < forecast ? `<div class="warning-inline">⚠ Не хватает мощности: часть заказов будет потеряна.</div>` : `<div class="success-inline">✓ Склад и курьеры справятся с прогнозом.</div>`}
+            <div class="demand-divider"></div>
+            <div class="demand-details"><span>Склад <strong>${warehouseCapacity(state)} / нед</strong></span><span>Курьеры <strong>${courierCapacity(state)} / нед</strong></span><span>Комиссия <strong>${state.commission}%</strong></span></div>
+          </article>
+          ${renderGoals(state)}
+          ${renderAchievements(state)}
+          ${renderLog(state)}
+        </div>
+      </div>`;
   }
 
   function renderAchievements(state) {
     const unlocked = new Set(state.achievements || []);
+    const isOpen = (state.collapsed || {}).achievements === false;
+    const last = [...ACHIEVEMENTS].reverse().find(item => unlocked.has(item.id));
+    const summary = `🏅 ${unlocked.size} / ${ACHIEVEMENTS.length} открыто${last ? ` · последнее: «${last.name}»` : ""}`;
     return `<section class="objectives-section">
-      <div class="section-heading"><div><div class="eyebrow">НАГРАДЫ</div><h2>Достижения</h2></div><span>${unlocked.size} / ${ACHIEVEMENTS.length} открыто</span></div>
-      <div class="achievements-grid">${ACHIEVEMENTS.map(item => {
+      <div class="section-heading"><div><div class="eyebrow">НАГРАДЫ</div><h2>Достижения</h2></div></div>
+      ${isOpen ? `<div class="achievements-grid">${ACHIEVEMENTS.map(item => {
         const isDone = unlocked.has(item.id);
         return `<article class="achievement-card ${isDone ? "is-unlocked" : ""}">
           <span class="achievement-icon">${isDone ? item.icon : "?"}</span>
@@ -1391,26 +1413,31 @@
           ${isDone ? `<span class="achievement-check">✓</span>` : ""}
         </article>`;
       }).join("")}</div>
+      <button class="collapse-bar" data-action="TOGGLE_SECTION" data-key="achievements"><span>${summary}</span><span class="collapse-toggle">Свернуть ▲</span></button>`
+      : `<button class="collapse-bar" data-action="TOGGLE_SECTION" data-key="achievements"><span>${summary}</span><span class="collapse-toggle">Показать ▼</span></button>`}
     </section>`;
   }
 
   function renderGoals(state) {
     const done = new Set(state.goalsDone);
     const missed = new Set(state.goalsMissed);
-    return `<section class="objectives-section">
-      <div class="section-heading"><div><div class="eyebrow">ЦЕЛИ ОСНОВАТЕЛЯ</div><h2>Дорожная карта</h2></div><span>Дедлайны сгорают — успевайте!</span></div>
-      <div class="objectives-grid">${GOALS.map(goal => {
+    return `<section class="objectives-section goals-section">
+      <div class="section-heading"><div><div class="eyebrow">ЦЕЛИ ОСНОВАТЕЛЯ</div><h2>Дорожная карта</h2></div><span>Дедлайны сгорают!</span></div>
+      <div class="goals-list">${GOALS.map(goal => {
         const isDone = done.has(goal.id);
         const isMissed = missed.has(goal.id);
         const progress = Math.min(goalProgress(state, goal), goal.target);
         const fill = clamp(Math.round(progress / goal.target * 100), 0, 100);
-        return `<article class="objective-card ${isDone ? "is-complete" : ""} ${isMissed ? "is-missed" : ""}">
-          <div class="objective-top"><span class="objective-icon">${goal.icon}</span><span class="objective-reward ${isMissed ? "missed" : ""}">${isDone ? "✓ ВЫПОЛНЕНО" : isMissed ? "✕ СРОК ИСТЁК" : `НАГРАДА ${money(goal.reward)}`}</span></div>
-          <h3>${goal.title}</h3><p>${goal.description}</p>
-          ${goal.deadline && !isDone && !isMissed ? `<div class="deadline-chip ${goal.deadline - state.week <= 3 ? "urgent" : ""}">⏱ До недели ${goal.deadline} · осталось ${Math.max(0, goal.deadline - state.week)} нед.</div>` : ""}
-          <div class="objective-progress"><div style="width:${fill}%"></div></div>
-          <div class="objective-foot"><span>${number(progress)} / ${number(goal.target)}</span><strong>${isDone ? "ГОТОВО" : isMissed ? "ПРОПУЩЕНО" : `${fill}%`}</strong></div>
-        </article>`;
+        return `<div class="goal-row ${isDone ? "is-complete" : ""} ${isMissed ? "is-missed" : ""}">
+          <span class="goal-icon">${goal.icon}</span>
+          <div class="goal-info"><strong>${goal.title}</strong><span>${goal.description}</span></div>
+          ${goal.deadline && !isDone && !isMissed ? `<span class="deadline-chip ${goal.deadline - state.week <= 3 ? "urgent" : ""}">⏱ нед. ${goal.deadline}</span>` : ""}
+          <div class="goal-progress-wrap">
+            <div class="small-progress"><div style="width:${fill}%"></div></div>
+            <span class="goal-count">${number(progress)} / ${number(goal.target)}</span>
+          </div>
+          <span class="goal-reward ${isMissed ? "missed" : ""}">${isDone ? "✓ готово" : isMissed ? "✕ сгорела" : `+${money(goal.reward)}`}</span>
+        </div>`;
       }).join("")}</div>
     </section>`;
   }
@@ -1418,11 +1445,11 @@
   function renderReport(state) {
     const report = state.lastReport;
     if (!report) {
-      return `<section class="panel report-panel report-empty-panel"><div class="report-empty-icon">▤</div><div><div class="eyebrow">ОТЧЁТ НЕДЕЛИ</div><h2>Первая неделя ещё впереди</h2><p>Завершите неделю — разберём спрос, выручку, расходы и прибыль, чтобы решить, что делать дальше.</p></div><span class="report-next">ПОСЛЕ НЕДЕЛИ ↘</span></section>`;
+      return `<section class="panel report-panel report-empty-panel" id="report"><div class="report-empty-icon">▤</div><div><div class="eyebrow">ОТЧЁТ НЕДЕЛИ</div><h2>Первая неделя ещё впереди</h2><p>Завершите неделю — разберём спрос, выручку, расходы и прибыль, чтобы решить, что делать дальше.</p></div><span class="report-next">ПОСЛЕ НЕДЕЛИ ↘</span></section>`;
     }
     const sign = report.profit >= 0 ? "+" : "−";
     const pulse = ((report.marketPulse - 1) * 100);
-    return `<section class="panel report-panel">
+    return `<section class="panel report-panel" id="report">
       <div class="panel-heading report-heading"><div><div class="eyebrow">ОТЧЁТ · НЕДЕЛЯ ${String(report.week).padStart(2, "0")}</div><h2>Как прошла неделя?</h2></div><span class="report-event">Рынок ${pulse >= 0 ? "+" : "−"}${Math.abs(pulse).toFixed(0)}% · заполнение ${report.fillRate}%</span></div>
       <div class="report-stats">
         <div class="report-stat"><span>Спрос</span><strong>${number(report.demand)}</strong><small>заказов</small></div>
@@ -1471,11 +1498,15 @@
   }
 
   function renderLog(state) {
+    const items = state.log || [];
+    const isOpen = (state.collapsed || {}).log === false;
+    const visible = isOpen ? items.slice(-30).reverse() : items.slice(-4).reverse();
     return `<section class="panel log-panel">
       <div class="panel-heading"><div><div class="eyebrow">ЛЕНТА СОБЫТИЙ</div><h2>Что происходит в компании</h2></div></div>
-      <div class="log-list">${(state.log || []).map(item => `
+      <div class="log-list">${visible.map(item => `
         <div class="log-item ${esc(item.tone)}"><span class="log-week">Н${String(item.week).padStart(2, "0")}</span><p>${esc(item.text)}</p></div>`).join("")}
       </div>
+      ${items.length > 4 ? `<button class="collapse-bar" data-action="TOGGLE_SECTION" data-key="log"><span>${isOpen ? "Свернуть ленту" : `Показать всю хронику (${items.length})`}</span><span class="collapse-toggle">${isOpen ? "▲" : "▼"}</span></button>` : ""}
     </section>`;
   }
 
