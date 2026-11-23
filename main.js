@@ -67,7 +67,7 @@
     const after = engine.state;
     Sfx.muted = !!after.muted;
     if (after === before) {
-      Sfx.play("deny");
+      Sfx.play(action === "OPEN_TAB" || action === "TOGGLE_FULLSCREEN" ? "click" : "deny");
       return;
     }
     const achievementsGrew = (after.achievements || []).length > (before.achievements || []).length;

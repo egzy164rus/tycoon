@@ -217,6 +217,38 @@
         { label: "Верить и заключить сделку", hint: "Шанс 45/55: +45 000 ₽ или −16 000 ₽", chance: { p: 0.45, ok: { cash: 45000 }, fail: { cash: -16000 }, okText: "Сделка оказалась золотой: +45 000 ₽!", failText: "Инвестор исчез с предоплатой: −16 000 ₽." } },
         { label: "Отказаться от авантюры", hint: "+2 репутации (спокойствие)", effects: { reputation: 2 } }
       ]
+    },
+    {
+      id: "spring_promo", season: "spring", icon: "✿", title: "Весеннее обновление",
+      text: "Город просыпается после зимы: покупатели ищут новое. Удачный момент для обновления бренда — или для честной распродажи.",
+      choices: [
+        { label: "Ребрендинг платформы", hint: "Шанс 60/40: +2 реп. и +10% спроса или −6 000 ₽ и −1 реп.", chance: { p: 0.6, ok: { reputation: 2, demandWeeks: 2, demandMult: 0.1 }, fail: { cash: -6000, reputation: -1 }, okText: "Новый стиль полюбился клиентам!", failText: "Редизайн не зашёл публике." } },
+        { label: "Весенняя распродажа", hint: "+3 500 ₽ · +10% спроса на неделю", effects: { cash: 3500, demandWeeks: 1, demandMult: 0.1 } }
+      ]
+    },
+    {
+      id: "summer_lull", season: "summer", icon: "☀", title: "Летний спад",
+      text: "Город пустеет: все в отпусках. Заказы просели, а команда устала и мечтает о море.",
+      choices: [
+        { label: "Мощная летняя распродажа", hint: "+4 000 ₽ · +15% спроса на 2 недели · −1 реп.", effects: { cash: 4000, demandWeeks: 2, demandMult: 0.15, reputation: -1 } },
+        { label: "Отправить команду в отпуск", hint: "+3 репутации · −3 000 ₽", effects: { reputation: 3, cash: -3000 } }
+      ]
+    },
+    {
+      id: "black_friday", season: "autumn", icon: "🍂", title: "Чёрная пятница",
+      text: "Самая горячая распродажа года. Можно рискнуть и взорвать рынок скидками — или сыграть наверняка.",
+      choices: [
+        { label: "Скидки до 70% на всё", hint: "Шанс 55/45: +22 000 ₽ и +15% спроса или −8 000 ₽ и −1 реп.", chance: { p: 0.55, ok: { cash: 22000, demandWeeks: 2, demandMult: 0.15 }, fail: { cash: -8000, reputation: -1 }, okText: "Распродажа взорвала рынок: +22 000 ₽!", failText: "Скидки съели маржу: −8 000 ₽." } },
+        { label: "Умеренная акция", hint: "+6 000 ₽ без риска", effects: { cash: 6000 } }
+      ]
+    },
+    {
+      id: "winter_holiday", season: "winter", icon: "❄", title: "Новогодний шопинг-бум",
+      text: "Праздники близко: спрос на доставку растёт каждую неделю. Успеть закупить товар впрок — или не рисковать?",
+      choices: [
+        { label: "Закупить товар впрок", hint: "Шанс 65/35: +15 000 ₽ и +20% спроса или −5 000 ₽", chance: { p: 0.65, ok: { cash: 15000, demandWeeks: 3, demandMult: 0.2 }, fail: { cash: -5000 }, okText: "Склад забит ходовыми товарами: +15 000 ₽!", failText: "Спрос ушёл к конкурентам: −5 000 ₽." } },
+        { label: "Работать как обычно", hint: "+10% спроса на неделю", effects: { demandWeeks: 1, demandMult: 0.1 } }
+      ]
     }
   ];
 
@@ -252,6 +284,63 @@
     { id: "marathon", icon: "◷", name: "Марафонец", desc: "Дожить до 30-й недели", check: s => s.week >= 30 },
     { id: "victory", icon: "👑", name: "Легенда рынка", desc: "Победить в игре", check: s => s.phase === "victory" }
   ];
+
+  // ============================== СЕЗОНЫ И ПРЕССА ==============================
+
+  const SEASONS = [
+    { id: "spring", name: "Весна", icon: "✿", demand: 1.02 },
+    { id: "summer", name: "Лето", icon: "☀", demand: 0.97 },
+    { id: "autumn", name: "Осень", icon: "🍂", demand: 1.03 },
+    { id: "winter", name: "Зима", icon: "❄", demand: 1.06 }
+  ];
+
+  function getSeason(week) {
+    return SEASONS[Math.floor(Math.max(0, week - 1) / 13) % SEASONS.length];
+  }
+
+  const NEWS_POOL = [
+    "Эксперты: доставка за 15 минут станет новой нормой.",
+    "Крупные сети готовятся к сезону распродаж.",
+    "Тренд на локальные маркеты набирает обороты.",
+    "Слухи: крупный инвестор ищет проект на рынке доставки.",
+    "Рост онлайн-заказов продолжает удивлять аналитиков.",
+    "Новые правила для курьеров обсуждают на федеральном уровне.",
+    "Гигант ритейла открыл новый логистический центр.",
+    "Потребители выбирают сервис с лучшей доставкой.",
+    "Рынок труда: спрос на менеджеров доставки вырос.",
+    "Новинка рынка: подписка на бесплатную доставку становится хитом.",
+    "Городские власти упростили правила для курьеров.",
+    "Аналитики предсказывают рекордный онлайн-сезон.",
+    "Геймификация покупок — главный тренд сезона.",
+    "Малый бизнес переходит в онлайн быстрее, чем ждали."
+  ];
+
+  const TUTORIAL_TIPS = [
+    { min: 1, text: "Добро пожаловать! Кнопка «Завершить неделю» двигает время. Настройте комиссию и цену — они влияют на спрос и лояльность продавцов." },
+    { min: 3, text: "Нанимайте и обучайте команду: продажи растят выручку, маркетинг — долю рынка, логистика — прибыль, IT снижает сбои." },
+    { min: 5, text: "Раздел «Исследования» — технологии и проекты открывают подписки, бонусы спроса и «Экспансию» на новые рынки." },
+    { min: 8, text: "Кредиты и рискованные ставки дают быстрые деньги, но читайте шансы и помните про платежи. Все правила — кнопка ❓ в шапке." },
+    { min: 11, text: "Следите за дедлайнами целей и конкурентами на «Рынке». Для победы нужны: доля 22%, касса 250 000 ₽ и международный статус." }
+  ];
+
+  function makeNews(state, sharePrev, shareNext, pulse, seasonNow, seasonNext) {
+    const items = [];
+    if (seasonNow.id !== seasonNext.id) {
+      items.push({ week: state.week, tone: "neutral", text: `Смена сезона: наступает «${seasonNext.name}» ${seasonNext.icon} — спрос ${seasonNext.demand > 1 ? "растёт" : "слегка ослабевает"}.` });
+    } else if (pulse > 1.06) {
+      items.push({ week: state.week, tone: "good", text: "Рынок оживился: покупатели активно заказывают доставку." });
+    } else if (pulse < 0.94) {
+      items.push({ week: state.week, tone: "bad", text: "Спрос просел: покупатели туже затягивают пояса." });
+    } else if (shareNext > sharePrev + 0.05) {
+      items.push({ week: state.week, tone: "good", text: `Ваша доля рынка подросла до ${shareNext.toFixed(1)}% — клиенты голосуют рублём.` });
+    } else if (shareNext < sharePrev - 0.05) {
+      items.push({ week: state.week, tone: "bad", text: `Доля рынка снизилась до ${shareNext.toFixed(1)}% — конкуренты не дремлют.` });
+    } else {
+      items.push({ week: state.week, tone: "neutral", text: pick(NEWS_POOL) });
+    }
+    items.push({ week: state.week, tone: "neutral", text: pick(NEWS_POOL) });
+    return items;
+  }
 
   // ============================== УТИЛИТЫ ==============================
 
@@ -315,6 +404,10 @@
       goalsMissed: [],
       achievements: [],
       muted: false,
+      theme: "light",
+      news: [],
+      tutorialDismissed: false,
+      helpOpen: false,
       floatFx: null,
       stats: { weeksPlayed: 0, bestWeekProfit: 0, totalRevenue: 0, gamblesWon: 0, gamblesPlayed: 0, eventsResolved: 0, loansTaken: 0, luckyWin: false },
       bankruptcyWeeks: 0,
@@ -519,6 +612,9 @@
     if (action === "SHOW_NOTICE") return { ...state, notice: String(payload.text || "") };
 
     if (action === "TOGGLE_MUTE") return { ...state, muted: !state.muted };
+    if (action === "TOGGLE_THEME") return { ...state, theme: state.theme === "dark" ? "light" : "dark" };
+    if (action === "TOGGLE_HELP") return { ...state, helpOpen: !state.helpOpen };
+    if (action === "DISMISS_TUTORIAL") return { ...state, tutorialDismissed: true };
 
     if (action === "SET_DIFFICULTY") {
       return { ...state, difficulty: diffById(payload.id).id };
@@ -813,7 +909,8 @@
       const share = clamp(state.share + shareDrift, 0.5, 90);
 
       // --- спрос и выполнение ---
-      const demand = Math.max(1, Math.round(marketTotal * share / 100 * dMult * marketPulse * (0.92 + Math.random() * 0.16)));
+      const seasonMult = getSeason(state.week).demand;
+      const demand = Math.max(1, Math.round(marketTotal * share / 100 * dMult * marketPulse * seasonMult * (0.92 + Math.random() * 0.16)));
       const fulfilled = Math.min(demand, cap);
       const lost = Math.max(0, demand - fulfilled);
       const fillRate = demand > 0 ? fulfilled / demand : 1;
@@ -941,6 +1038,7 @@
         tempDemand: tempDemandAfter,
         bankruptcyWeeks,
         stats: statsAfter,
+        news: makeNews(state, state.share, shareAfter, marketPulse, getSeason(state.week), getSeason(state.week + 1)).concat(state.news || []).slice(0, 8),
         floatFx: { text: `${profit >= 0 ? "+" : "−"}${money(Math.abs(profit))}`, tone: profit >= 0 ? "good" : "bad" },
         bestCash: Math.max(state.bestCash || 0, cashAfter),
         bestShare: Math.max(state.bestShare || 0, shareAfter),
@@ -995,6 +1093,7 @@
     const fullscreenLabel = typeof document !== "undefined" && document.fullscreenElement ? "Выйти из полного экрана" : "На весь экран";
     const diff = diffById(state.difficulty);
     const debt = weeklyLoanPayments(state);
+    const season = getSeason(state.week);
     return `<div class="game-shell">
       <aside class="sidebar">
         <div class="brand-row">
@@ -1027,7 +1126,10 @@
             <button class="topbar-tool fullscreen-tool" data-action="TOGGLE_FULLSCREEN" title="${fullscreenLabel}" aria-label="${fullscreenLabel}"><span class="tool-icon">⛶</span><span class="tool-label">${fullscreenLabel}</span></button>
             ${debt ? `<span class="city-pill debt-pill"><span class="city-dot debt"></span>ДОЛГ ${money(debt)}/НЕД</span>` : ""}
             <span class="city-pill"><span class="city-dot"></span>${esc(STAGES[state.stage].name.toUpperCase())} · ${esc(diff.name.toUpperCase())}</span>
+            <span class="city-pill season-chip" title="Сезон влияет на спрос">${season.icon} ${esc(season.name.toUpperCase())}</span>
             <span class="day-pill">НЕДЕЛЯ ${String(state.week).padStart(2, "0")}</span>
+            <button class="topbar-tool" data-action="TOGGLE_HELP" title="Правила и подсказки" aria-label="Правила и подсказки"><span class="tool-icon">❓</span></button>
+            <button class="topbar-tool" data-action="TOGGLE_THEME" title="${state.theme === "dark" ? "Светлая тема" : "Тёмная тема"}" aria-label="${state.theme === "dark" ? "Светлая тема" : "Тёмная тема"}"><span class="tool-icon">${state.theme === "dark" ? "☀" : "🌙"}</span></button>
             <button class="topbar-tool" data-action="TOGGLE_MUTE" title="${state.muted ? "Включить звук" : "Выключить звук"}" aria-label="${state.muted ? "Включить звук" : "Выключить звук"}"><span class="tool-icon">${state.muted ? "🔇" : "🔊"}</span></button>
             <div class="profile-avatar">Л</div>
           </div>
@@ -1220,6 +1322,7 @@
     const shares = marketShares(state);
     const pulsePct = ((state.marketPulse - 1) * 100);
     return `${pageHeading(`${esc(STAGES[state.stage].name.toUpperCase())} · НЕДЕЛЯ ${String(state.week).padStart(2, "0")}`, "Кабинет основателя", "Управляйте стратегией платформы: команда, технологии, проекты и рынок — каждый ход решает.", `<button class="primary-button" data-action="END_WEEK">Завершить неделю <span>→</span></button>`)}
+      ${renderTutorial(state)}
       <section class="hero-card">
         <div class="hero-copy">
           <div class="hero-pill"><span class="pulse"></span> ${state.event ? "СОБЫТИЕ ТРЕБУЕТ РЕШЕНИЯ" : state.cash < 0 ? "ФИНАНСОВЫЙ КРИЗИС" : "НЕДЕЛЯ В РАБОТЕ"}</div>
@@ -1329,7 +1432,42 @@
         <div class="report-stat report-profit ${report.profit >= 0 ? "positive" : "negative"}"><span>Чистый итог</span><strong>${sign}${money(Math.abs(report.profit))}</strong><small>прибыль за неделю</small></div>
       </div>
       <div class="report-insight"><span>✦</span><p><strong>Доля рынка:</strong> ${report.share.toFixed(1)}% (${report.shareChange >= 0 ? "+" : "−"}${Math.abs(report.shareChange).toFixed(2)} п.п.)${report.lost > 0 ? ` · <strong>Потеряно ${number(report.lost)} заказов</strong> — не хватило мощностей.` : ""}</p></div>
+      ${renderNewsBlock(state, 4)}
     </section>`;
+  }
+
+  function renderNewsBlock(state, limit) {
+    const items = (state.news || []).slice(0, limit);
+    if (!items.length) return "";
+    return `<div class="report-news"><h3>📰 Хроника рынка</h3>${items.map(item => `<div class="news-item ${esc(item.tone || "neutral")}"><span class="news-week">НЕД ${item.week}</span><p>${esc(item.text)}</p></div>`).join("")}</div>`;
+  }
+
+  function renderTutorial(state) {
+    if (state.tutorialDismissed || state.week > 14) return "";
+    const tip = [...TUTORIAL_TIPS].reverse().find(item => state.week >= item.min);
+    if (!tip) return "";
+    return `<section class="tutorial-card">
+      <span class="tutorial-badge">📚 УЧЕБНИК</span>
+      <p>${tip.text}</p>
+      <button data-action="DISMISS_TUTORIAL" aria-label="Скрыть подсказку">Понятно ✓</button>
+    </section>`;
+  }
+
+  function renderHelp() {
+    return `<div class="help-overlay" role="dialog" aria-modal="true" aria-label="Правила игры">
+      <div class="help-backdrop" data-action="TOGGLE_HELP"></div>
+      <div class="help-modal">
+        <div class="help-head"><div><div class="eyebrow">СПРАВКА</div><h2>Как стать магнатом</h2></div><button class="help-close" data-action="TOGGLE_HELP" aria-label="Закрыть">×</button></div>
+        <div class="help-body">
+          <div class="help-block"><h3>🎯 Цель игры</h3><p>Построить международную империю: провести 3 экспансии, достичь <strong>22% доли рынка</strong> и накопить <strong>250 000 ₽</strong>. Банкротство — 3 недели с отрицательным балансом или долг ниже −80 000 ₽.</p></div>
+          <div class="help-block"><h3>💼 Управление</h3><p><strong>Кабинет</strong> — обзор, цели и достижения. <strong>Команда</strong> — найм, обучение, бонусы. <strong>Исследования</strong> — технологии и проекты (в т.ч. «Экспансия»). <strong>Рынок</strong> — цена, комиссия, конкуренты, кредиты и рискованные ставки.</p></div>
+          <div class="help-block"><h3>💸 Деньги и риск</h3><p>Кредиты дают деньги сейчас против еженедельных платежей. Рискованные ставки честно показывают шансы: можно сорвать куш или потерять ставку. В событиях с выбором «шанс 50/50» решайте сами — полагаться на удачу или играть наверняка.</p></div>
+          <div class="help-block"><h3>📈 Спрос и команда</h3><p>Спрос растёт от низкой цены, доставки, технологий, маркетинга и репутации. Следите за загрузкой мощностей: потерянные заказы бьют по репутации. Мораль команды зависит от прибыли.</p></div>
+          <div class="help-block"><h3>⏱ Цели и сезоны</h3><p>У целей есть дедлайны — просроченные награды сгорают. Сезоны меняются каждые 13 недель: зимой спрос выше, летом ниже. Следите за хроникой рынка и настроением конкурентов.</p></div>
+        </div>
+        <button class="primary-button help-cta" data-action="TOGGLE_HELP">Понятно, играть! <span>→</span></button>
+      </div>
+    </div>`;
   }
 
   function renderLog(state) {
@@ -1507,6 +1645,11 @@
         </div>
       </section>
 
+      ${state.news && state.news.length ? `<section class="panel news-panel">
+        <div class="panel-heading"><div><div class="eyebrow">ПРЕССА</div><h2>Новости рынка</h2></div><span class="period-chip">ПОСЛЕДНИЕ ${Math.min(state.news.length, 8)}</span></div>
+        <div class="news-feed">${state.news.slice(0, 8).map(item => `<div class="news-item ${esc(item.tone || "neutral")}"><span class="news-week">НЕД ${item.week}</span><p>${esc(item.text)}</p></div>`).join("")}</div>
+      </section>` : ""}
+
       <section class="market-grid">
         <article class="panel commission-panel">
           <div class="panel-heading"><div><div class="eyebrow">ПРАВИЛА ПЛОЩАДКИ</div><h2>Комиссия продавца</h2></div><span class="commission-badge">${state.commission}%</span></div>
@@ -1586,18 +1729,28 @@
   }
 
   function render(state) {
-    if (state.phase === "menu") return renderMenu(state);
-    if (state.phase === "gameover") return renderEndScreen(state, false);
-    if (state.phase === "victory") return renderEndScreen(state, true);
-    let content;
-    switch (state.activeView) {
-      case "team": content = renderTeam(state); break;
-      case "research": content = renderResearch(state); break;
-      case "projects": content = renderProjects(state); break;
-      case "market": content = renderMarket(state); break;
-      default: content = renderOverview(state);
+    if (typeof document !== "undefined" && document.documentElement) {
+      document.documentElement.setAttribute("data-theme", state.theme === "dark" ? "dark" : "light");
     }
-    return renderShell(state, content) + renderEventModal(state);
+    let base;
+    if (state.phase === "menu") {
+      base = renderMenu(state);
+    } else if (state.phase === "gameover") {
+      base = renderEndScreen(state, false);
+    } else if (state.phase === "victory") {
+      base = renderEndScreen(state, true);
+    } else {
+      let content;
+      switch (state.activeView) {
+        case "team": content = renderTeam(state); break;
+        case "research": content = renderResearch(state); break;
+        case "projects": content = renderProjects(state); break;
+        case "market": content = renderMarket(state); break;
+        default: content = renderOverview(state);
+      }
+      base = renderShell(state, content) + renderEventModal(state);
+    }
+    return base + (state.helpOpen ? renderHelp() : "");
   }
 
   window.MarketTycoon = { initialState, reducer, render };
